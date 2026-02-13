@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 
 export default function Home() {
-  redirect('/products');
+  redirect('/restaurant/pos-orders');
   return null;
 }

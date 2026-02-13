@@ -2,11 +2,12 @@
 
 import Link from "next/link"
 import {
-  Package,
   Package2,
   Users2,
   ShoppingCart,
-  Settings,
+  LayoutGrid,
+  Rows4,
+  Package,
 } from "lucide-react"
 import { usePathname } from "next/navigation"
 
@@ -18,10 +19,11 @@ import {
 } from "@/components/ui/tooltip"
 
 export const NAV_LINKS = [
-  { href: "/products", label: "Products", icon: Package },
-  { href: "/customers", label: "Customers", icon: Users2 },
-  { href: "/pos/orders", label: "POS Orders", icon: ShoppingCart },
-  { href: "/pos/configs", label: "POS Configs", icon: Settings },
+  { href: "/restaurant/pos-orders", label: "POS Orders", icon: ShoppingCart },
+  { href: "/restaurant/products", label: "Products", icon: Package },
+  { href: "/restaurant/customers", label: "Customers", icon: Users2 },
+  { href: "/restaurant/floors", label: "Floors", icon: LayoutGrid },
+  { href: "/restaurant/tables", label: "Tables", icon: Rows4 },
 ]
 
 export function Sidebar() {
@@ -32,7 +34,7 @@ export function Sidebar() {
       <aside className="fixed inset-y-0 left-0 z-10 hidden w-14 flex-col border-r bg-background sm:flex">
         <nav className="flex flex-col items-center gap-4 px-2 sm:py-5">
           <Link
-            href="/products"
+            href="/restaurant/pos-orders"
             className="group flex h-9 w-9 shrink-0 items-center justify-center gap-2 rounded-full bg-primary text-lg font-semibold text-primary-foreground md:h-8 md:w-8 md:text-base"
           >
             <Package2 className="h-4 w-4 transition-all group-hover:scale-110" />

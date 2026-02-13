@@ -1,16 +1,8 @@
-type OdooJson2Error = {
-  name: string;
-  message: string;
-  arguments: any[];
-  context: Record<string, any>;
-  debug: string;
-};
-
 export class OdooClientError extends Error {
   status: number;
-  odooError?: OdooJson2Error;
+  odooError?: any;
 
-  constructor(message: string, status: number, odooError?: OdooJson2Error) {
+  constructor(message: string, status: number, odooError?: any) {
     super(message);
     this.name = 'OdooClientError';
     this.status = status;
@@ -23,14 +15,14 @@ export async function odooCall<T>(
   method: string,
   payload: Record<string, any> = {}
 ): Promise<T> {
-  const baseUrl = process.env.ODOO_BASE_URL || 'https://demp.primetek.in';
+  const baseUrl = process.env.ODOO_BASE_URL || 'https://demo.primetek.in';
   const apiKey = process.env.ODOO_API_KEY;
   const db = process.env.ODOO_DB || 'ram-db';
 
   if (!apiKey) {
     throw new OdooClientError('Odoo API key (ODOO_API_KEY) is not configured.', 500);
   }
-
+  
   const url = `${baseUrl}/json/2/${model}/${method}`;
   
   const headers = {
@@ -40,10 +32,17 @@ export async function odooCall<T>(
     'User-Agent': 'FirebaseStudio-Odoo-Manager/1.0',
   };
   
-  const bodyPayload = {
-    ...payload,
-    context: { lang: 'en_US', ...(payload.context || {}) },
-  };
+  // For search_count, the domain is a positional argument, not a keyword one.
+  const isSearchCount = method === 'search_count';
+  const bodyPayload = isSearchCount
+    ? {
+        context: { lang: 'en_US', ...(payload.context || {}) },
+        domain: payload.domain || [],
+      }
+    : {
+        context: { lang: 'en_US', ...(payload.context || {}) },
+        ...payload,
+      };
 
   const body = JSON.stringify(bodyPayload);
 
@@ -56,22 +55,20 @@ export async function odooCall<T>(
     });
 
     if (!response.ok) {
-        const contentType = response.headers.get("content-type");
-        let errorData;
-        let errorMessage;
-
-        if (contentType && contentType.indexOf("application/json") !== -1) {
-            errorData = await response.json();
-            errorMessage = errorData.message || 'An unknown Odoo API error occurred';
-        } else {
-            errorMessage = await response.text();
+        let errorData: any = null;
+        try {
+          errorData = await response.json();
+        } catch {
+          // ignore if response is not json
         }
-      
-      throw new OdooClientError(errorMessage, response.status, errorData);
+        throw new OdooClientError(
+            `Odoo error ${response.status}: ${errorData?.message || errorData?.name || response.statusText}`,
+            response.status,
+            errorData
+        );
     }
     
-    const responseData = await response.json();
-    return responseData as T;
+    return response.json() as Promise<T>;
 
   } catch (err) {
     if (err instanceof OdooClientError) {
