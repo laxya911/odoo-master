@@ -2,6 +2,9 @@ import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
   /* config options here */
+  serverActions: {
+    bodySizeLimit: '4mb',
+  },
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -30,9 +33,6 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  allowedDevOrigins: [
-    "https://6000-firebase-studio-1770989729217.cluster-mwsteha33jfdowtvzffztbjcj6.cloudworkstations.dev",
-  ],
 };
 
 export default nextConfig;
