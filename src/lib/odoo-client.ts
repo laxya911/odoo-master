@@ -35,18 +35,40 @@ export async function odooCall<T>(
     throw new OdooClientError('Odoo API key (ODOO_API_KEY) is not configured.', 500);
   }
 
-  const url = `${baseUrl}/json/2/${model}/${method}`;
+  const url = `${baseUrl}/jsonrpc/2`;
   const headers = {
     'Content-Type': 'application/json',
     Authorization: `bearer ${apiKey}`,
     'X-Odoo-Database': db,
   };
   
-  const body = JSON.stringify({
-    params: {
-      ...payload,
-      context: { lang: "en_US", ...(payload.context || {}) },
+  const params: { model: string, method: string, args: any[], kwargs: Record<string, any> } = {
+    model,
+    method,
+    args: [],
+    kwargs: {},
+  };
+
+  if (method === 'search_count') {
+    // search_count expects the domain as a positional argument.
+    params.args.push(payload.domain || []);
+    if (payload.context) {
+      params.kwargs.context = payload.context;
     }
+  } else {
+    // Other methods like search_read use keyword arguments.
+    params.args.push(payload.domain || []);
+    params.kwargs = { ...payload };
+    delete params.kwargs.domain;
+  }
+  
+  params.kwargs.context = { lang: 'en_US', ...(params.kwargs.context || {}) };
+
+  const body = JSON.stringify({
+    jsonrpc: "2.0",
+    method: "call",
+    params,
+    id: Math.floor(Math.random() * 1000000000),
   });
 
   try {
