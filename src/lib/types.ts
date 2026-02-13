@@ -2,6 +2,21 @@ export type OdooRecord = Record<string, any> & {
   id: number;
 };
 
+export type Product = OdooRecord & {
+  name: string;
+  list_price: number;
+  image_256: string | false;
+  // Attributes for variants
+  attribute_line_ids: number[]; 
+};
+
+export type CartItem = {
+  id: string; // Unique ID for the cart item instance
+  product: Product;
+  quantity: number;
+  notes?: string;
+};
+
 export interface Paginated<T> {
   data: T[];
   meta: {
