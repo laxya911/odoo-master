@@ -27,7 +27,6 @@ export default async function ProductsPage({
 }: {
   searchParams: { [key: string]: string | string[] | undefined };
 }) {
-  console.log('[ProductsPage] Received searchParams:', searchParams);
   const params = new URLSearchParams(JSON.parse(JSON.stringify(searchParams)));
   const productsData = await getProducts(params);
 

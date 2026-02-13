@@ -3,7 +3,6 @@ import { odooCall, OdooClientError } from '@/lib/odoo-client';
 import type { PosOrder } from '@/lib/types';
 
 export async function GET(request: NextRequest) {
-  console.log(`[API /api/odoo/pos/orders] Received request with search params: ${request.nextUrl.searchParams.toString()}`);
   try {
     const searchParams = request.nextUrl.searchParams;
     const limit = parseInt(searchParams.get('limit') || '10', 10);

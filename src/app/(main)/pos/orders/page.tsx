@@ -27,7 +27,6 @@ export default async function PosOrdersPage({
 }: {
   searchParams: { [key: string]: string | string[] | undefined };
 }) {
-  console.log('[PosOrdersPage] Received searchParams:', searchParams);
   const params = new URLSearchParams(JSON.parse(JSON.stringify(searchParams)));
   const ordersData = await getPosOrders(params);
 
