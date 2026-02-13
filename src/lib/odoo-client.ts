@@ -1,20 +1,16 @@
-type OdooJsonRpcError = {
-  code: number;
+type OdooJson2Error = {
+  name: string;
   message: string;
-  data: {
-    name: string;
-    debug: string;
-    message: string;
-    arguments: any[];
-    context: Record<string, any>;
-  };
+  arguments: any[];
+  context: Record<string, any>;
+  debug: string;
 };
 
 export class OdooClientError extends Error {
   status: number;
-  odooError?: OdooJsonRpcError;
+  odooError?: OdooJson2Error;
 
-  constructor(message: string, status: number, odooError?: OdooJsonRpcError) {
+  constructor(message: string, status: number, odooError?: OdooJson2Error) {
     super(message);
     this.name = 'OdooClientError';
     this.status = status;
@@ -35,41 +31,21 @@ export async function odooCall<T>(
     throw new OdooClientError('Odoo API key (ODOO_API_KEY) is not configured.', 500);
   }
 
-  const url = `${baseUrl}/jsonrpc/2`;
+  const url = `${baseUrl}/json/2/${model}/${method}`;
+  
   const headers = {
     'Content-Type': 'application/json',
     Authorization: `bearer ${apiKey}`,
     'X-Odoo-Database': db,
+    'User-Agent': 'FirebaseStudio-Odoo-Manager/1.0',
   };
   
-  const params: { model: string, method: string, args: any[], kwargs: Record<string, any> } = {
-    model,
-    method,
-    args: [],
-    kwargs: {},
+  const bodyPayload = {
+    ...payload,
+    context: { lang: 'en_US', ...(payload.context || {}) },
   };
 
-  if (method === 'search_count') {
-    // search_count expects the domain as a positional argument.
-    params.args.push(payload.domain || []);
-    if (payload.context) {
-      params.kwargs.context = payload.context;
-    }
-  } else {
-    // Other methods like search_read use keyword arguments.
-    params.args.push(payload.domain || []);
-    params.kwargs = { ...payload };
-    delete params.kwargs.domain;
-  }
-  
-  params.kwargs.context = { lang: 'en_US', ...(params.kwargs.context || {}) };
-
-  const body = JSON.stringify({
-    jsonrpc: "2.0",
-    method: "call",
-    params,
-    id: Math.floor(Math.random() * 1000000000),
-  });
+  const body = JSON.stringify(bodyPayload);
 
   try {
     const response = await fetch(url, {
@@ -79,19 +55,24 @@ export async function odooCall<T>(
       cache: 'no-store',
     });
 
-    const responseData = await response.json();
+    if (!response.ok) {
+        const contentType = response.headers.get("content-type");
+        let errorData;
+        let errorMessage;
 
-    if (!response.ok || responseData.error) {
-      const error: OdooJsonRpcError = responseData.error || {
-        code: response.status,
-        message: response.statusText,
-        data: { message: response.statusText, name: 'UnknownError', debug: '', arguments: [], context: {} },
-      };
-      const errorMessage = error.data?.message || error.message;
-      throw new OdooClientError(errorMessage, response.status, error);
+        if (contentType && contentType.indexOf("application/json") !== -1) {
+            errorData = await response.json();
+            errorMessage = errorData.message || 'An unknown Odoo API error occurred';
+        } else {
+            errorMessage = await response.text();
+        }
+      
+      throw new OdooClientError(errorMessage, response.status, errorData);
     }
     
-    return responseData.result as T;
+    const responseData = await response.json();
+    return responseData as T;
+
   } catch (err) {
     if (err instanceof OdooClientError) {
       throw err;

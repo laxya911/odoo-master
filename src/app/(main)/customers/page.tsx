@@ -34,7 +34,7 @@ export default async function CustomersPage({
 }: {
   searchParams: { [key: string]: string | string[] | undefined };
 }) {
-  const params = new URLSearchParams(JSON.parse(JSON.stringify(searchParams)));
+  const params = new URLSearchParams(searchParams as any);
   const customersData = await getCustomers(params);
 
   if ('error' in customersData) {

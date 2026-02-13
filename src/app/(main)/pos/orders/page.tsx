@@ -34,7 +34,7 @@ export default async function PosOrdersPage({
 }: {
   searchParams: { [key: string]: string | string[] | undefined };
 }) {
-  const params = new URLSearchParams(JSON.parse(JSON.stringify(searchParams)));
+  const params = new URLSearchParams(searchParams as any);
   const ordersData = await getPosOrders(params);
 
   if ('error' in ordersData) {
