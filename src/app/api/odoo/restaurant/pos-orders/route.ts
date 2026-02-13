@@ -62,7 +62,7 @@ type OrderPayload = {
 export async function POST(request: NextRequest) {
   try {
     const payload: OrderPayload = await request.json();
-    const { cartItems, customer, total } = payload;
+    const { cartItems, customer } = payload;
 
     if (!cartItems || cartItems.length === 0) {
       return NextResponse.json({ message: 'Cart is empty.' }, { status: 400 });
@@ -85,8 +85,8 @@ export async function POST(request: NextRequest) {
       product_id: item.product.id,
       qty: item.quantity,
       price_unit: item.product.list_price,
+      price_subtotal: item.product.list_price * item.quantity,
       note: item.notes || '',
-      // Odoo calculates taxes, totals, etc. automatically
     }]);
 
     // 3. Create the pos.order record
@@ -95,9 +95,8 @@ export async function POST(request: NextRequest) {
       // For now, we're not creating/linking customers for guests
       partner_id: false, 
       lines: orderLines,
-      amount_total: total,
-      amount_tax: 0, // Odoo will calculate
-      amount_paid: 0, // Will be 0 until payment is processed
+      // Let Odoo calculate totals
+      amount_paid: 0,
       amount_return: 0,
     };
     
