@@ -12,8 +12,15 @@ async function getPosConfigs(searchParams: URLSearchParams): Promise<Paginated<P
   try {
     const res = await fetch(url.toString(), { cache: 'no-store' });
     if (!res.ok) {
-      const errorBody = await res.json();
-      return { error: { message: errorBody.error.message, status: res.status } };
+       const contentType = res.headers.get("content-type");
+      let errorMessage;
+      if (contentType && contentType.indexOf("application/json") !== -1) {
+        const errorBody = await res.json();
+        errorMessage = errorBody.error?.message || 'An unknown API error occurred';
+      } else {
+        errorMessage = await res.text();
+      }
+      return { error: { message: errorMessage, status: res.status } };
     }
     return res.json();
   } catch (e) {
