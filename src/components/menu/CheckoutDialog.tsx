@@ -18,7 +18,7 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useToast } from '@/hooks/use-toast';
 import { createOrder } from '@/lib/actions';
-import type { CartItem } from '@/lib/types';
+import type { CartItem, OrderPayload, OrderLineItem } from '@/lib/types';
 import { Loader2 } from 'lucide-react';
 
 const checkoutSchema = z.object({
@@ -60,12 +60,22 @@ export function CheckoutDialog({
   const onSubmit = async (data: CheckoutFormValues) => {
     setIsSubmitting(true);
     try {
-      const result = await createOrder({
-        cartItems,
+      // Transform cartItems to only send necessary data, not the whole product object
+      const lineItems: OrderLineItem[] = cartItems.map(item => ({
+        product_id: item.product.id,
+        quantity: item.quantity,
+        list_price: item.product.list_price,
+        notes: item.notes,
+      }));
+
+      const payload: OrderPayload = {
+        cartItems: lineItems,
         customer: { name: data.name, email: data.email },
         paymentMethod: data.paymentMethod,
         total,
-      });
+      };
+      
+      const result = await createOrder(payload);
 
       if (result.success && result.orderId) {
         onCheckoutSuccess(result.orderId);

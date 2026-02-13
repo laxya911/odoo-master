@@ -1,7 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { odooCall, OdooClientError } from '@/lib/odoo-client';
-import type { OdooRecord, CartItem, CustomerDetails } from '@/lib/types';
+import type { OdooRecord, OrderPayload } from '@/lib/types';
 
 const ODOO_MODEL = "pos.order";
 
@@ -52,12 +52,6 @@ export async function GET(request: NextRequest) {
   }
 }
 
-type OrderPayload = {
-  cartItems: CartItem[];
-  customer: CustomerDetails;
-  paymentMethod: string;
-  total: number;
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -83,11 +77,11 @@ export async function POST(request: NextRequest) {
 
     // 2. Prepare order lines from cart items
     const orderLines = cartItems.map(item => [0, 0, {
-      product_id: item.product.id,
+      product_id: item.product_id,
       qty: item.quantity,
-      price_unit: item.product.list_price,
-      price_subtotal: item.product.list_price * item.quantity,
-      price_subtotal_incl: item.product.list_price * item.quantity,
+      price_unit: item.list_price,
+      price_subtotal: item.list_price * item.quantity,
+      price_subtotal_incl: item.list_price * item.quantity,
       note: item.notes || '',
     }]);
 

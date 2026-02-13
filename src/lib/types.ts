@@ -17,6 +17,15 @@ export type CartItem = {
   notes?: string;
 };
 
+// This is what the server action will receive from the client.
+// It avoids sending the entire product object, especially images.
+export type OrderLineItem = {
+    product_id: number;
+    quantity: number;
+    list_price: number;
+    notes?: string;
+}
+
 export interface Paginated<T> {
   data: T[];
   meta: {
@@ -40,7 +49,7 @@ export type CustomerDetails = {
 };
 
 export type OrderPayload = {
-  cartItems: CartItem[];
+  cartItems: OrderLineItem[];
   customer: CustomerDetails;
   paymentMethod: string;
   total: number;
