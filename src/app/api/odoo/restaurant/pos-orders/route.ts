@@ -1,3 +1,4 @@
+
 import { NextRequest, NextResponse } from 'next/server';
 import { odooCall, OdooClientError } from '@/lib/odoo-client';
 import type { OdooRecord, CartItem, CustomerDetails } from '@/lib/types';
@@ -100,7 +101,16 @@ export async function POST(request: NextRequest) {
       amount_return: 0,
     };
     
-    const newOrderId = await odooCall<number>('pos.order', 'create', [orderData]);
+    // The 'create' method expects a named argument 'vals_list' which is a list of objects.
+    const newOrders = await odooCall<OdooRecord[]>('pos.order', 'create', {
+      vals_list: [orderData],
+    });
+
+    if (!newOrders || newOrders.length === 0 || !newOrders[0].id) {
+      return NextResponse.json({ message: 'Failed to create order in Odoo or retrieve new order ID.' }, { status: 500 });
+    }
+    
+    const newOrderId = newOrders[0].id;
 
     // In a real scenario, we'd proceed to payment processing here.
     // For demo purposes, we'll consider the order created.
