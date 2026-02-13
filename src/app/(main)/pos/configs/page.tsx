@@ -27,13 +27,8 @@ export default async function PosConfigsPage({
 }: {
   searchParams: { [key: string]: string | string[] | undefined };
 }) {
-  const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(searchParams)) {
-    if (value) {
-      params.set(key, String(value));
-    }
-  }
-  
+  console.log('[PosConfigsPage] Received searchParams:', searchParams);
+  const params = new URLSearchParams(JSON.parse(JSON.stringify(searchParams)));
   const configsData = await getPosConfigs(params);
 
   if ('error' in configsData) {

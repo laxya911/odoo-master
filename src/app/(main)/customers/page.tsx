@@ -27,12 +27,8 @@ export default async function CustomersPage({
 }: {
   searchParams: { [key: string]: string | string[] | undefined };
 }) {
-  const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(searchParams)) {
-    if (value) {
-      params.set(key, String(value));
-    }
-  }
+  console.log('[CustomersPage] Received searchParams:', searchParams);
+  const params = new URLSearchParams(JSON.parse(JSON.stringify(searchParams)));
   const customersData = await getCustomers(params);
 
   if ('error' in customersData) {
