@@ -6,7 +6,7 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const limit = parseInt(searchParams.get('limit') || '10', 10);
-    const offset = parseInt(search_params.get('offset') || '0', 10);
+    const offset = parseInt(searchParams.get('offset') || '0', 10);
     const startDate = searchParams.get('start_date');
     const endDate = searchParams.get('end_date');
     
