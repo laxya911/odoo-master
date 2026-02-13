@@ -28,10 +28,11 @@ export default async function ProductsPage({
   searchParams: { [key: string]: string | string[] | undefined };
 }) {
   const params = new URLSearchParams();
-  if (searchParams.limit) params.set('limit', searchParams.limit.toString());
-  if (searchParams.offset) params.set('offset', searchParams.offset.toString());
-  if (searchParams.name) params.set('name', searchParams.name.toString());
-  if (searchParams.active) params.set('active', searchParams.active.toString());
+  for (const [key, value] of Object.entries(searchParams)) {
+    if (value) {
+      params.set(key, String(value));
+    }
+  }
   
   const productsData = await getProducts(params);
 

@@ -28,10 +28,11 @@ export default async function PosOrdersPage({
   searchParams: { [key: string]: string | string[] | undefined };
 }) {
   const params = new URLSearchParams();
-  if (searchParams.limit) params.set('limit', searchParams.limit.toString());
-  if (searchParams.offset) params.set('offset', searchParams.offset.toString());
-  if (searchParams.start_date) params.set('start_date', searchParams.start_date.toString());
-  if (searchParams.end_date) params.set('end_date', searchParams.end_date.toString());
+  for (const [key, value] of Object.entries(searchParams)) {
+    if (value) {
+      params.set(key, String(value));
+    }
+  }
 
   const ordersData = await getPosOrders(params);
 
