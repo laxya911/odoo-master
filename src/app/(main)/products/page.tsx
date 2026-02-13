@@ -16,7 +16,7 @@ async function getProducts(searchParams: URLSearchParams): Promise<Paginated<Pro
       let errorMessage;
       if (contentType && contentType.indexOf("application/json") !== -1) {
         const errorBody = await res.json();
-        errorMessage = errorBody.error?.message || 'An unknown API error occurred';
+        errorMessage = errorBody.message || 'An unknown API error occurred';
       } else {
         errorMessage = await res.text();
       }
@@ -34,7 +34,7 @@ export default async function ProductsPage({
 }: {
   searchParams: { [key: string]: string | string[] | undefined };
 }) {
-  const params = new URLSearchParams(searchParams as any);
+  const params = new URLSearchParams(JSON.parse(JSON.stringify(searchParams)));
   const productsData = await getProducts(params);
 
   if ('error' in productsData) {

@@ -16,7 +16,7 @@ async function getPosOrders(searchParams: URLSearchParams): Promise<Paginated<Po
       let errorMessage;
       if (contentType && contentType.indexOf("application/json") !== -1) {
         const errorBody = await res.json();
-        errorMessage = errorBody.error?.message || 'An unknown API error occurred';
+        errorMessage = errorBody.message || 'An unknown API error occurred';
       } else {
         errorMessage = await res.text();
       }
@@ -34,7 +34,7 @@ export default async function PosOrdersPage({
 }: {
   searchParams: { [key: string]: string | string[] | undefined };
 }) {
-  const params = new URLSearchParams(searchParams as any);
+  const params = new URLSearchParams(JSON.parse(JSON.stringify(searchParams)));
   const ordersData = await getPosOrders(params);
 
   if ('error' in ordersData) {
