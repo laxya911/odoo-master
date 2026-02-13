@@ -62,7 +62,7 @@ type OrderPayload = {
 export async function POST(request: NextRequest) {
   try {
     const payload: OrderPayload = await request.json();
-    const { cartItems, customer } = payload;
+    const { cartItems } = payload;
 
     if (!cartItems || cartItems.length === 0) {
       return NextResponse.json({ message: 'Cart is empty.' }, { status: 400 });
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
     // 1. Find an active POS session
     const activeSessions = await odooCall<OdooRecord[]>('pos.session', 'search_read', {
       domain: [['state', '=', 'opened']],
-      fields: ['id'],
+      fields: ['id', 'company_id'],
       limit: 1,
     });
 
@@ -79,6 +79,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Sorry, the restaurant is currently closed. No active POS session found.' }, { status: 400 });
     }
     const sessionId = activeSessions[0].id;
+    const companyId = activeSessions[0].company_id ? activeSessions[0].company_id[0] : false;
 
     // 2. Prepare order lines from cart items
     const orderLines = cartItems.map(item => [0, 0, {
@@ -86,21 +87,23 @@ export async function POST(request: NextRequest) {
       qty: item.quantity,
       price_unit: item.product.list_price,
       price_subtotal: item.product.list_price * item.quantity,
+      price_subtotal_incl: item.product.list_price * item.quantity,
       note: item.notes || '',
     }]);
 
-    // 3. Create the pos.order record
+    // 3. Create the pos.order record following the doc
     const orderData = {
+      name: "Web Order", // Odoo will generate a real name
       session_id: sessionId,
-      // For now, we're not creating/linking customers for guests
-      partner_id: false, 
+      partner_id: false, // Guest checkout
+      company_id: companyId,
       lines: orderLines,
-      // Let Odoo calculate totals
-      amount_paid: 0,
-      amount_return: 0,
+      amount_tax: null,
+      amount_total: null,
+      amount_paid: null,
+      amount_return: null,
     };
     
-    // The 'create' method expects a named argument 'vals_list' which is a list of objects.
     const newOrders = await odooCall<OdooRecord[]>('pos.order', 'create', {
       vals_list: [orderData],
     });
@@ -113,8 +116,7 @@ export async function POST(request: NextRequest) {
 
     // In a real scenario, we'd proceed to payment processing here.
     // For demo purposes, we'll consider the order created.
-    // We could call `action_pos_order_paid` after creating a payment record.
-
+    
     return NextResponse.json({ success: true, orderId: newOrderId, message: `Order #${newOrderId} created successfully!` });
 
   } catch (error) {
