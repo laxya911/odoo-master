@@ -33,3 +33,15 @@ export type OdooError = {
   status: number;
   odooError?: any;
 }
+
+export type CustomerDetails = {
+  name: string;
+  email: string;
+};
+
+export type OrderPayload = {
+  cartItems: CartItem[];
+  customer: CustomerDetails;
+  paymentMethod: string;
+  total: number;
+};

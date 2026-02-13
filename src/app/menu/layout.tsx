@@ -13,8 +13,10 @@ export default function MenuLayout({
     <CartProvider>
       <div className="flex min-h-screen w-full bg-background">
         <main className="flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
-        <aside className="w-full max-w-sm border-l bg-muted/40">
-          <Cart />
+        <aside className="hidden w-full max-w-sm border-l bg-muted/40 lg:block">
+          <div className="sticky top-0 h-screen">
+            <Cart />
+          </div>
         </aside>
       </div>
       <Toaster />
