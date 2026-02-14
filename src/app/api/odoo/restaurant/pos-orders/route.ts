@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Cart is empty.' }, { status: 400 });
     }
 
-    // 1. Find an active POS session and payment method
+    // 1. Find an active POS session and a CASH payment method
     const activeSessions = await odooCall<OdooRecord[]>('pos.session', 'search_read', {
       domain: [['state', '=', 'opened']],
       fields: ['id', 'config_id'],
@@ -88,11 +88,11 @@ export async function POST(request: NextRequest) {
         fields: ['type']
     });
 
-    const bankPaymentMethod = paymentMethods.find(pm => pm.type === 'bank');
-    if (!bankPaymentMethod) {
-         return NextResponse.json({ message: 'No suitable online payment method found.' }, { status: 500 });
+    const cashPaymentMethod = paymentMethods.find(pm => pm.type === 'cash');
+    if (!cashPaymentMethod) {
+         return NextResponse.json({ message: 'No cash payment method found for Dine-In orders.' }, { status: 500 });
     }
-    const paymentMethodId = bankPaymentMethod.id;
+    const paymentMethodId = cashPaymentMethod.id;
 
 
     // 2. Find or create a customer (res.partner)
@@ -102,6 +102,7 @@ export async function POST(request: NextRequest) {
         fields: ['id'],
         limit: 1,
     });
+
     if (existingPartners.length > 0) {
         partnerId = existingPartners[0].id;
     } else {
@@ -109,10 +110,6 @@ export async function POST(request: NextRequest) {
             vals: {
                 name: customer.name,
                 email: customer.email,
-                street: customer.address,
-                city: customer.city,
-                zip: customer.zip,
-                country_id: false // For simplicity, can be enhanced to search country by code
             }
         });
         partnerId = newPartnerId;
@@ -174,7 +171,7 @@ export async function POST(request: NextRequest) {
     
     // 6. Validate the order by calling action_pos_order_paid
     await odooCall<any>('pos.order', 'action_pos_order_paid', {
-        args: [[newOrderId]]
+        ids: [newOrderId]
     });
     
     return NextResponse.json({ success: true, orderId: newOrderId, message: `Order #${newOrderId} created successfully!` });
