@@ -97,10 +97,13 @@ export async function POST(request: NextRequest) {
         console.log("No existing partner found, creating a new one...");
         const newPartnerPayload = { name: customer.name, email: customer.email };
         console.log("New partner payload:", newPartnerPayload);
-        const newPartnerId = await odooCall<number>('res.partner', 'create', {
-            vals: newPartnerPayload
+        const newPartnerIds = await odooCall<number[]>('res.partner', 'create', {
+            vals_list: [newPartnerPayload]
         });
-        partnerId = newPartnerId;
+        if (!newPartnerIds || newPartnerIds.length === 0) {
+           throw new Error("Partner creation did not return an ID.");
+        }
+        partnerId = newPartnerIds[0];
         console.log(`Created new partner with ID: ${partnerId}`);
     }
 
@@ -112,11 +115,11 @@ export async function POST(request: NextRequest) {
     // 3. Prepare order lines and create a DRAFT pos.order
     console.log("Step 3: Preparing order lines...");
     const orderLines = cartItems.map(item => {
-        const subtotal = item.list_price * item.quantity;
+        const subtotal = item.product.list_price * item.quantity;
         return [0, 0, {
-            product_id: item.product_id,
+            product_id: item.product.id,
             qty: item.quantity,
-            price_unit: item.list_price,
+            price_unit: item.product.list_price,
             price_subtotal: subtotal,
             price_subtotal_incl: subtotal, // Odoo will recalculate with taxes anyway
             note: item.notes || '',
@@ -137,14 +140,15 @@ export async function POST(request: NextRequest) {
     
     console.log("Step 4: Creating draft POS order with payload:", JSON.stringify(orderData, null, 2));
 
-    const newOrderId = await odooCall<number>('pos.order', 'create', {
-      vals: orderData
+    const newOrderIds = await odooCall<number[]>('pos.order', 'create', {
+      vals_list: [orderData]
     });
 
-    if (!newOrderId) {
+    if (!newOrderIds || newOrderIds.length === 0 || !newOrderIds[0]) {
       console.error("Odoo 'create' method did not return a new order ID.");
       return NextResponse.json({ message: 'Failed to create order in Odoo.' }, { status: 500 });
     }
+    const newOrderId = newOrderIds[0];
     
     console.log(`--- Successfully created DRAFT order #${newOrderId} ---`);
 
