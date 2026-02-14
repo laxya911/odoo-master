@@ -180,7 +180,6 @@ export async function POST(request: NextRequest) {
         amount_total: 0, // Odoo requires a value, even if it's recomputed.
         amount_paid: 0,
         amount_return: 0,
-        note: `Order Type: ${orderType}`
     };
     
     // 5. Create a DRAFT pos.order
@@ -248,5 +247,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
-    
