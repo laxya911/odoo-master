@@ -115,11 +115,11 @@ export async function POST(request: NextRequest) {
     // 3. Prepare order lines and create a DRAFT pos.order
     console.log("Step 3: Preparing order lines...");
     const orderLines = cartItems.map(item => {
-        const subtotal = item.product.list_price * item.quantity;
+        const subtotal = item.list_price * item.quantity;
         return [0, 0, {
-            product_id: item.product.id,
+            product_id: item.product_id,
             qty: item.quantity,
-            price_unit: item.product.list_price,
+            price_unit: item.list_price,
             price_subtotal: subtotal,
             price_subtotal_incl: subtotal, // Odoo will recalculate with taxes anyway
             note: item.notes || '',
@@ -158,14 +158,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, orderId: newOrderId, message: `Draft Order #${newOrderId} created successfully! Please complete payment in Odoo.` });
 
   } catch (error) {
+    const e = error as Error;
     const odooError = error as OdooClientError;
     console.error("[API /restaurant/pos-orders POST] An error occurred:");
     console.error("Status:", odooError.status);
-    console.error("Message:", odooError.message);
+    console.error("Message:", e.message);
     console.error("Odoo Error Details:", JSON.stringify(odooError.odooError, null, 2));
     
     return NextResponse.json(
-      { message: odooError.message, status: odooError.status, odooError: odooError.odooError },
+      { message: e.message, status: odooError.status, odooError: odooError.odooError },
       { status: odooError.status || 500 }
     );
   }
