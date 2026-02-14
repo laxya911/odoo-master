@@ -178,11 +178,10 @@ export async function POST(request: NextRequest) {
     const newOrderId = newOrderIds[0];
     console.log(`--- Successfully created DRAFT order #${newOrderId} ---`);
 
-    // 6. Fetch the order to get the calculated total
-    console.log(`Step 6: Reading order #${newOrderId} to get totals...`);
+    // 6. Manually calculate total for payment.
     // Note: Odoo doesn't compute totals on create, so we manually calculate for payment.
     const amountTotal = orderLines.reduce((acc, line) => acc + (line[2].price_subtotal_incl || 0), 0);
-    console.log(`Order total is: ${amountTotal}`);
+    console.log(`Step 6: Calculated order total for payment is: ${amountTotal}`);
     
     // 7. Add payment to the order
     console.log(`Step 7: Adding payment to order #${newOrderId}...`);
