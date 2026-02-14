@@ -58,13 +58,20 @@ export async function POST(request: NextRequest) {
   console.log("--- Starting POS Order Creation ---");
   try {
     const payload: OrderPayload = await request.json();
-    const { orderLines: cartItems, customer, paymentMethod, orderType } = payload;
-    console.log("Received Payload:", { cartItemCount: cartItems.length, customer, paymentMethod, orderType });
+    console.log("Received Payload:", { 
+      cartItemCount: payload.orderLines?.length, 
+      customer: payload.customer,
+      paymentMethod: payload.paymentMethod,
+      orderType: payload.orderType
+    });
 
-    if (!cartItems || cartItems.length === 0) {
-      return NextResponse.json({ message: 'Cart is empty.' }, { status: 400 });
+    // Fix for "Cannot read properties of undefined (reading 'length')"
+    if (!payload.orderLines || payload.orderLines.length === 0) {
+      return NextResponse.json({ message: 'Cart is empty or orderLines are missing.' }, { status: 400 });
     }
 
+    const { orderLines: cartItems, customer, paymentMethod, orderType, total } = payload;
+    
     // 1. Find an active POS session and its config
     console.log("Step 1: Finding active POS session...");
     const activeSessions = await odooCall<OdooRecord[]>('pos.session', 'search_read', {
@@ -120,7 +127,8 @@ export async function POST(request: NextRequest) {
       newPartnerPayload.street = customer.street;
       newPartnerPayload.city = customer.city;
       newPartnerPayload.zip = customer.zip;
-      newPartnerPayload.country_id = 2; // Hardcoding for demo, you'd look this up
+      // Assuming a default country, would need a lookup in a real app
+      newPartnerPayload.country_id = customer.country ? 236 : false; 
     }
     
     if (customer.email) {
@@ -163,7 +171,7 @@ export async function POST(request: NextRequest) {
     });
 
     const orderData = {
-        name: `Web Order - ${orderType.charAt(0).toUpperCase() + orderType.slice(1)}`,
+        name: `Web Order - ${orderType ? (orderType.charAt(0).toUpperCase() + orderType.slice(1)) : ''}`,
         session_id: sessionId,
         partner_id: partnerId,
         lines: orderLines,
@@ -188,12 +196,13 @@ export async function POST(request: NextRequest) {
     const newOrderId = newOrderIds[0];
     console.log(`--- Successfully created DRAFT order #${newOrderId} ---`);
 
-    // 6. Manually calculate total for payment.
-    const amountTotal = cartItems.reduce((acc, item) => acc + (item.list_price * item.quantity), 0);
-    console.log(`Step 6: Calculated order total for payment is: ${amountTotal}`);
+    // 6. Use client-provided total for payment.
+    const amountTotal = total;
+    console.log(`Step 6: Using client-provided total for payment is: ${amountTotal}`);
     
     // 7. Add payment to the order
     console.log(`Step 7: Adding payment to order #${newOrderId}...`);
+    // This creates the pos.payment record and links it.
     await odooCall<null>(ODOO_MODEL, 'add_payment', {
         ids: [newOrderId],
         data: {
@@ -206,8 +215,12 @@ export async function POST(request: NextRequest) {
 
     // 8. Validate the order to move it to "Paid" state and generate invoice
     console.log(`Step 8: Validating order #${newOrderId}...`);
-    const validationResult = await odooCall<any>(ODOO_MODEL, 'action_pos_order_paid', {
-        ids: [newOrderId]
+     const validationResult = await odooCall<any>(ODOO_MODEL, 'action_pos_order_paid', {
+        kwargs: {
+          context: {
+            active_ids: [newOrderId]
+          }
+        }
     });
     console.log("Order validation result:", validationResult);
 
@@ -219,15 +232,21 @@ export async function POST(request: NextRequest) {
     const e = error as Error;
     const odooError = error as OdooClientError;
     console.error("[API /restaurant/pos-orders POST] An error occurred:");
-    console.error("Status:", odooError.status);
-    console.error("Message:", e.message);
-    if (odooError.odooError) {
-        console.error("Odoo Error Details:", JSON.stringify(odooError.odooError, null, 2));
+    if(odooError) {
+      console.error("Status:", odooError.status);
+      console.error("Message:", odooError.message);
+      if (odooError.odooError) {
+          console.error("Odoo Error Details:", JSON.stringify(odooError.odooError, null, 2));
+      }
+    } else {
+        console.error("Message:", e.message);
     }
     
     return NextResponse.json(
-      { message: e.message, status: odooError.status, odooError: odooError.odooError },
-      { status: odooError.status || 500 }
+      { message: odooError?.message || e.message, status: odooError?.status || 500, odooError: odooError?.odooError },
+      { status: odooError?.status || 500 }
     );
   }
 }
+
+    
