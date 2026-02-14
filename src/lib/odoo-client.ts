@@ -32,17 +32,10 @@ export async function odooCall<T>(
     'User-Agent': 'FirebaseStudio-Odoo-Manager/1.0',
   };
   
-  // For search_count, the domain is a positional argument, not a keyword one.
-  const isSearchCount = method === 'search_count';
-  const bodyPayload = isSearchCount
-    ? {
-        context: { lang: 'en_US', ...(payload.context || {}) },
-        domain: payload.domain || [],
-      }
-    : {
-        context: { lang: 'en_US', ...(payload.context || {}) },
-        ...payload,
-      };
+  const bodyPayload = {
+    context: { lang: 'en_US', ...(payload.context || {}) },
+    ...payload,
+  };
 
   const body = JSON.stringify(bodyPayload);
 
@@ -55,17 +48,22 @@ export async function odooCall<T>(
     });
 
     if (!response.ok) {
-        let errorData: any = null;
-        try {
-          errorData = await response.json();
-        } catch {
-          // ignore if response is not json
-        }
+      let errorData: any = null;
+      try {
+        errorData = await response.json();
+      } catch {
+        // ignore if response is not json
+        const textError = await response.text();
         throw new OdooClientError(
-            `Odoo error ${response.status}: ${errorData?.message || errorData?.name || response.statusText}`,
-            response.status,
-            errorData
+          `Odoo error ${response.status}: ${textError}`,
+          response.status
         );
+      }
+      throw new OdooClientError(
+          `Odoo error ${response.status}: ${errorData?.message || errorData?.name || response.statusText}`,
+          response.status,
+          errorData
+      );
     }
     
     return response.json() as Promise<T>;
@@ -75,6 +73,7 @@ export async function odooCall<T>(
       throw err;
     }
     const error = err as Error;
+    console.error("Network or other fetch error in odooCall:", error);
     throw new OdooClientError(error.message || 'An unknown network error occurred.', 500);
   }
 }

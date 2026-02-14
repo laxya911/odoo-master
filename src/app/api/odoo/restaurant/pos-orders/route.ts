@@ -1,3 +1,5 @@
+'use server';
+
 import { NextRequest, NextResponse } from 'next/server';
 import { odooCall, OdooClientError } from '@/lib/odoo-client';
 import type { OdooRecord, OrderPayload } from '@/lib/types';
@@ -44,6 +46,7 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     const odooError = error as OdooClientError;
+    console.error("[API /restaurant/pos-orders GET] Odoo Error:", odooError.odooError || odooError.message);
     return NextResponse.json(
       { message: odooError.message, status: odooError.status, odooError: odooError.odooError },
       { status: odooError.status || 500 }
@@ -52,15 +55,18 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  console.log("--- Starting POS Order Creation ---");
   try {
     const payload: OrderPayload = await request.json();
     const { cartItems, customer } = payload;
+    console.log("Received Payload:", { cartItemCount: cartItems.length, customer });
 
     if (!cartItems || cartItems.length === 0) {
       return NextResponse.json({ message: 'Cart is empty.' }, { status: 400 });
     }
 
     // 1. Find an active POS session and a CASH payment method
+    console.log("Step 1: Finding active POS session...");
     const activeSessions = await odooCall<OdooRecord[]>('pos.session', 'search_read', {
       domain: [['state', '=', 'opened']],
       fields: ['id', 'config_id'],
@@ -68,34 +74,15 @@ export async function POST(request: NextRequest) {
     });
 
     if (!activeSessions || activeSessions.length === 0) {
+      console.error("No active POS session found.");
       return NextResponse.json({ message: 'Sorry, the restaurant is currently closed. No active POS session found.' }, { status: 400 });
     }
     const session = activeSessions[0];
     const sessionId = session.id;
-    const configId = session.config_id[0];
-    
-    const posConfig = await odooCall<OdooRecord[]>('pos.config', 'read', {
-        ids: [configId],
-        fields: ['payment_method_ids']
-    });
-
-    if (!posConfig || posConfig.length === 0 || !posConfig[0].payment_method_ids?.length) {
-         return NextResponse.json({ message: 'No payment methods configured for the active POS.' }, { status: 500 });
-    }
-    
-    const paymentMethods = await odooCall<OdooRecord[]>('pos.payment.method', 'read', {
-        ids: posConfig[0].payment_method_ids,
-        fields: ['type']
-    });
-
-    const cashPaymentMethod = paymentMethods.find(pm => pm.type === 'cash');
-    if (!cashPaymentMethod) {
-         return NextResponse.json({ message: 'No cash payment method found for Dine-In orders.' }, { status: 500 });
-    }
-    const paymentMethodId = cashPaymentMethod.id;
-
+    console.log(`Found active session ID: ${sessionId}`);
 
     // 2. Find or create a customer (res.partner)
+    console.log(`Step 2: Finding or creating customer for email: ${customer.email}`);
     let partnerId: number | false = false;
     const existingPartners = await odooCall<OdooRecord[]>('res.partner', 'search_read', {
         domain: [['email', '=', customer.email]],
@@ -105,21 +92,25 @@ export async function POST(request: NextRequest) {
 
     if (existingPartners.length > 0) {
         partnerId = existingPartners[0].id;
+        console.log(`Found existing partner with ID: ${partnerId}`);
     } else {
+        console.log("No existing partner found, creating a new one...");
+        const newPartnerPayload = { name: customer.name, email: customer.email };
+        console.log("New partner payload:", newPartnerPayload);
         const newPartnerId = await odooCall<number>('res.partner', 'create', {
-            vals: {
-                name: customer.name,
-                email: customer.email,
-            }
+            vals: newPartnerPayload
         });
         partnerId = newPartnerId;
+        console.log(`Created new partner with ID: ${partnerId}`);
     }
+
      if (!partnerId) {
+        console.error("Failed to find or create a partner.");
         return NextResponse.json({ message: 'Could not find or create customer.' }, { status: 500 });
     }
 
-
     // 3. Prepare order lines and create a DRAFT pos.order
+    console.log("Step 3: Preparing order lines...");
     const orderLines = cartItems.map(item => {
         const subtotal = item.list_price * item.quantity;
         return [0, 0, {
@@ -127,57 +118,48 @@ export async function POST(request: NextRequest) {
             qty: item.quantity,
             price_unit: item.list_price,
             price_subtotal: subtotal,
-            price_subtotal_incl: subtotal, // Odoo will recalculate with taxes
+            price_subtotal_incl: subtotal, // Odoo will recalculate with taxes anyway
             note: item.notes || '',
         }];
     });
 
-    const newOrderId = await odooCall<number>('pos.order', 'create', {
-      vals: {
+    const orderData = {
         name: "Web Order", // Odoo will generate a real name
         session_id: sessionId,
         partner_id: partnerId,
         lines: orderLines,
-        // Let odoo compute the totals
+        to_invoice: false, // Let's keep it simple for now
         amount_tax: 0, 
         amount_total: 0,
         amount_paid: 0,
         amount_return: 0,
-      }
+    };
+    
+    console.log("Step 4: Creating draft POS order with payload:", JSON.stringify(orderData, null, 2));
+
+    const newOrderId = await odooCall<number>('pos.order', 'create', {
+      vals: orderData
     });
-     if (!newOrderId) {
+
+    if (!newOrderId) {
+      console.error("Odoo 'create' method did not return a new order ID.");
       return NextResponse.json({ message: 'Failed to create order in Odoo.' }, { status: 500 });
     }
     
-    // 4. Read the created order to get the calculated total
-     const newOrders = await odooCall<OdooRecord[]>('pos.order', 'read', {
-        ids: [newOrderId],
-        fields: ['amount_total']
-    });
+    console.log(`--- Successfully created DRAFT order #${newOrderId} ---`);
 
-    if (!newOrders || newOrders.length === 0) {
-      return NextResponse.json({ message: 'Failed to read back created order.' }, { status: 500 });
-    }
-    const amountTotal = newOrders[0].amount_total;
+    // NOTE: The next steps (payment and validation) are skipped for now to debug incrementally.
+    // This should create an order with customer details and line item totals, but it will be in a draft state.
     
-    // 5. Create a payment record for the order
-    await odooCall<any>('pos.payment', 'create', {
-        vals: {
-            pos_order_id: newOrderId,
-            amount: amountTotal,
-            payment_method_id: paymentMethodId
-        }
-    });
-    
-    // 6. Validate the order by calling action_pos_order_paid
-    await odooCall<any>('pos.order', 'action_pos_order_paid', {
-        ids: [newOrderId]
-    });
-    
-    return NextResponse.json({ success: true, orderId: newOrderId, message: `Order #${newOrderId} created successfully!` });
+    return NextResponse.json({ success: true, orderId: newOrderId, message: `Draft Order #${newOrderId} created successfully! Please complete payment in Odoo.` });
 
   } catch (error) {
     const odooError = error as OdooClientError;
+    console.error("[API /restaurant/pos-orders POST] An error occurred:");
+    console.error("Status:", odooError.status);
+    console.error("Message:", odooError.message);
+    console.error("Odoo Error Details:", JSON.stringify(odooError.odooError, null, 2));
+    
     return NextResponse.json(
       { message: odooError.message, status: odooError.status, odooError: odooError.odooError },
       { status: odooError.status || 500 }
