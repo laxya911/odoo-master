@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
     }
 
 
-    // 4. Prepare order lines and create a DRAFT pos.order
+    // 4. Prepare order lines
     console.log("Step 4: Preparing order lines...");
     const orderLines = cartItems.map(item => {
         const subtotal = item.list_price * item.quantity;
@@ -165,6 +165,7 @@ export async function POST(request: NextRequest) {
         amount_return: 0,
     };
     
+    // 5. Create a DRAFT pos.order
     console.log("Step 5: Creating draft POS order...");
 
     const newOrderIds = await odooCall<number[]>('pos.order', 'create', {
@@ -179,25 +180,19 @@ export async function POST(request: NextRequest) {
 
     // 6. Fetch the order to get the calculated total
     console.log(`Step 6: Reading order #${newOrderId} to get totals...`);
-    const newOrdersData = await odooCall<OdooRecord[]>('pos.order', 'read', {
-        ids: [newOrderId],
-        fields: ['amount_total']
-    });
-    if (!newOrdersData || newOrdersData.length === 0) {
-        throw new Error(`Could not read the newly created order #${newOrderId} back from Odoo.`);
-    }
-    const amountTotal = newOrdersData[0].amount_total as number;
+    // Note: Odoo doesn't compute totals on create, so we manually calculate for payment.
+    const amountTotal = orderLines.reduce((acc, line) => acc + (line[2].price_subtotal_incl || 0), 0);
     console.log(`Order total is: ${amountTotal}`);
     
     // 7. Add payment to the order
     console.log(`Step 7: Adding payment to order #${newOrderId}...`);
     await odooCall<null>(ODOO_MODEL, 'add_payment', {
         ids: [newOrderId],
-        args: [{
+        data: {
             pos_order_id: newOrderId,
             amount: amountTotal,
             payment_method_id: paymentMethodId,
-        }]
+        }
     });
     console.log("Payment added successfully.");
 
