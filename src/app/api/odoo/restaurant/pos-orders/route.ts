@@ -58,8 +58,8 @@ export async function POST(request: NextRequest) {
   console.log("--- Starting POS Order Creation ---");
   try {
     const payload: OrderPayload = await request.json();
-    const { cartItems, customer } = payload;
-    console.log("Received Payload:", { cartItemCount: cartItems.length, customer });
+    const { orderLines: cartItems, customer, paymentMethod, orderType } = payload;
+    console.log("Received Payload:", { cartItemCount: cartItems.length, customer, paymentMethod, orderType });
 
     if (!cartItems || cartItems.length === 0) {
       return NextResponse.json({ message: 'Cart is empty.' }, { status: 400 });
@@ -83,9 +83,10 @@ export async function POST(request: NextRequest) {
     console.log(`Found active session ID: ${sessionId} with Config ID: ${configId}`);
 
 
-    // 2. Find a CASH payment method from the POS config
-    console.log("Step 2: Finding a cash payment method...");
-     const posConfig = await odooCall<OdooRecord[]>('pos.config', 'read', {
+    // 2. Find a payment method from the POS config
+    console.log(`Step 2: Finding a '${paymentMethod}' payment method...`);
+    const isCashPayment = paymentMethod === 'cash';
+    const posConfig = await odooCall<OdooRecord[]>('pos.config', 'read', {
         ids: [configId],
         fields: ['payment_method_ids']
     });
@@ -96,23 +97,32 @@ export async function POST(request: NextRequest) {
 
     const paymentMethodIds = posConfig[0].payment_method_ids as number[];
     const paymentMethods = await odooCall<OdooRecord[]>('pos.payment.method', 'search_read', {
-        domain: [['id', 'in', paymentMethodIds], ['is_cash_count', '=', true]],
+        domain: [['id', 'in', paymentMethodIds], ['is_cash_count', '=', isCashPayment]],
         fields: ['id', 'name'],
         limit: 1
     });
 
     if (!paymentMethods || paymentMethods.length === 0) {
-       console.error("No cash payment method found for the active POS session.");
-       return NextResponse.json({ message: 'Could not find a cash payment method.' }, { status: 500 });
+       console.error(`No payment method found for type '${paymentMethod}' for the active POS session.`);
+       return NextResponse.json({ message: 'Could not find a suitable payment method.' }, { status: 500 });
     }
-    const paymentMethod = paymentMethods[0];
-    const paymentMethodId = paymentMethod.id as number;
-    console.log(`Using payment method: '${paymentMethod.name}' (ID: ${paymentMethodId})`);
+    const paymentMethodRecord = paymentMethods[0];
+    const paymentMethodId = paymentMethodRecord.id as number;
+    console.log(`Using payment method: '${paymentMethodRecord.name}' (ID: ${paymentMethodId})`);
 
 
     // 3. Find or create a customer (res.partner)
     console.log(`Step 3: Finding or creating customer for email: ${customer.email}`);
     let partnerId: number | false = false;
+    const newPartnerPayload: Record<string, any> = { name: customer.name, email: customer.email };
+    
+    if (orderType === 'delivery') {
+      newPartnerPayload.street = customer.street;
+      newPartnerPayload.city = customer.city;
+      newPartnerPayload.zip = customer.zip;
+      newPartnerPayload.country_id = 2; // Hardcoding for demo, you'd look this up
+    }
+    
     if (customer.email) {
       const existingPartners = await odooCall<OdooRecord[]>('res.partner', 'search_read', {
           domain: [['email', '=', customer.email]],
@@ -125,7 +135,6 @@ export async function POST(request: NextRequest) {
           console.log(`Found existing partner with ID: ${partnerId}`);
       } else {
           console.log("No existing partner found, creating a new one...");
-          const newPartnerPayload = { name: customer.name, email: customer.email };
           console.log("New partner payload:", newPartnerPayload);
           const newPartnerIds = await odooCall<number[]>('res.partner', 'create', {
               vals_list: [newPartnerPayload]
@@ -154,15 +163,16 @@ export async function POST(request: NextRequest) {
     });
 
     const orderData = {
-        name: "Web Order",
+        name: `Web Order - ${orderType.charAt(0).toUpperCase() + orderType.slice(1)}`,
         session_id: sessionId,
         partner_id: partnerId,
         lines: orderLines,
-        to_invoice: false,
+        to_invoice: true,
         amount_tax: 0,
-        amount_total: 0,
+        amount_total: 0, // Odoo requires a value, even if it's recomputed.
         amount_paid: 0,
         amount_return: 0,
+        note: `Order Type: ${orderType}`
     };
     
     // 5. Create a DRAFT pos.order
@@ -179,8 +189,7 @@ export async function POST(request: NextRequest) {
     console.log(`--- Successfully created DRAFT order #${newOrderId} ---`);
 
     // 6. Manually calculate total for payment.
-    // Note: Odoo doesn't compute totals on create, so we manually calculate for payment.
-    const amountTotal = orderLines.reduce((acc, line) => acc + (line[2].price_subtotal_incl || 0), 0);
+    const amountTotal = cartItems.reduce((acc, item) => acc + (item.list_price * item.quantity), 0);
     console.log(`Step 6: Calculated order total for payment is: ${amountTotal}`);
     
     // 7. Add payment to the order

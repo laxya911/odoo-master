@@ -7,7 +7,7 @@ export type Product = OdooRecord & {
   list_price: number;
   image_256: string | false;
   // Attributes for variants
-  attribute_line_ids: number[]; 
+  attribute_line_ids: number[];
 };
 
 export type CartItem = {
@@ -17,14 +17,12 @@ export type CartItem = {
   notes?: string;
 };
 
-// This is what the server action will receive from the client.
-// It avoids sending the entire product object, especially images.
 export type OrderLineItem = {
-    product_id: number;
-    quantity: number;
-    list_price: number;
-    notes?: string;
-}
+  product_id: number;
+  quantity: number;
+  list_price: number;
+  notes?: string;
+};
 
 export interface Paginated<T> {
   data: T[];
@@ -41,16 +39,22 @@ export type OdooError = {
   message: string;
   status: number;
   odooError?: any;
-}
+};
 
 export type CustomerDetails = {
   name: string;
   email: string;
+  street?: string;
+  city?: string;
+  zip?: string;
+  country?: string;
 };
 
 export type OrderPayload = {
-  cartItems: OrderLineItem[];
+  orderLines: OrderLineItem[];
   customer: CustomerDetails;
   paymentMethod: string;
+  orderType: "dine-in" | "delivery";
   total: number;
+  notes?: string;
 };
