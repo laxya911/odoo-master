@@ -18,12 +18,16 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useToast } from '@/hooks/use-toast';
 import { createOrder } from '@/lib/actions';
-import type { CartItem, OrderPayload, OrderLineItem } from '@/lib/types';
+import type { CartItem, OrderPayload, OrderLineItem, CustomerDetails } from '@/lib/types';
 import { Loader2 } from 'lucide-react';
 
 const checkoutSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters.'),
   email: z.string().email('Please enter a valid email address.'),
+  address: z.string().min(5, 'Please enter a valid address.'),
+  city: z.string().min(2, 'Please enter a valid city.'),
+  zip: z.string().min(3, 'Please enter a valid ZIP/postal code.'),
+  country: z.string().min(2, 'Please enter a valid country.'),
   paymentMethod: z.enum(['demo', 'stripe'], {
     required_error: 'You need to select a payment method.',
   }),
@@ -54,23 +58,35 @@ export function CheckoutDialog({
     defaultValues: {
       name: '',
       email: '',
+      address: '',
+      city: '',
+      zip: '',
+      country: '',
     },
   });
 
   const onSubmit = async (data: CheckoutFormValues) => {
     setIsSubmitting(true);
     try {
-      // Transform cartItems to only send necessary data, not the whole product object
       const lineItems: OrderLineItem[] = cartItems.map(item => ({
         product_id: item.product.id,
         quantity: item.quantity,
         list_price: item.product.list_price,
         notes: item.notes,
       }));
+      
+      const customerDetails: CustomerDetails = {
+        name: data.name,
+        email: data.email,
+        address: data.address,
+        city: data.city,
+        zip: data.zip,
+        country: data.country
+      }
 
       const payload: OrderPayload = {
         cartItems: lineItems,
-        customer: { name: data.name, email: data.email },
+        customer: customerDetails,
         paymentMethod: data.paymentMethod,
         total,
       };
@@ -102,12 +118,12 @@ export function CheckoutDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-md">
         <form onSubmit={form.handleSubmit(onSubmit)}>
           <DialogHeader>
-            <DialogTitle>Complete Your Order</DialogTitle>
+            <DialogTitle>Complete Your Delivery Order</DialogTitle>
             <DialogDescription>
-              Please provide your details and select a payment method.
+              Please provide your details for delivery and payment.
             </DialogDescription>
           </DialogHeader>
 
@@ -126,6 +142,32 @@ export function CheckoutDialog({
                 <p className="text-sm text-destructive">{form.formState.errors.email.message}</p>
               )}
             </div>
+             <div className="grid gap-2">
+              <Label htmlFor="address">Street Address</Label>
+              <Input id="address" {...form.register('address')} />
+              {form.formState.errors.address && (
+                <p className="text-sm text-destructive">{form.formState.errors.address.message}</p>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+               <div className="grid gap-2">
+                <Label htmlFor="city">City</Label>
+                <Input id="city" {...form.register('city')} />
+                {form.formState.errors.city && <p className="text-sm text-destructive">{form.formState.errors.city.message}</p>}
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="zip">ZIP / Postal Code</Label>
+                <Input id="zip" {...form.register('zip')} />
+                {form.formState.errors.zip && <p className="text-sm text-destructive">{form.formState.errors.zip.message}</p>}
+              </div>
+            </div>
+             <div className="grid gap-2">
+              <Label htmlFor="country">Country</Label>
+              <Input id="country" {...form.register('country')} />
+              {form.formState.errors.country && (
+                <p className="text-sm text-destructive">{form.formState.errors.country.message}</p>
+              )}
+            </div>
             <div className="grid gap-2">
                <Label>Payment Method</Label>
                <RadioGroup
@@ -134,12 +176,9 @@ export function CheckoutDialog({
                 >
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="demo" id="demo" />
-                    <Label htmlFor="demo">Demo Checkout</Label>
+                    <Label htmlFor="demo">Online Payment (Demo)</Label>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="stripe" id="stripe" />
-                    <Label htmlFor="stripe">Stripe (Test)</Label>
-                  </div>
+                   {/* Stripe could be added here later */}
                 </RadioGroup>
                 {form.formState.errors.paymentMethod && (
                     <p className="text-sm text-destructive">{form.formState.errors.paymentMethod.message}</p>

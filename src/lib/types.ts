@@ -46,6 +46,10 @@ export type OdooError = {
 export type CustomerDetails = {
   name: string;
   email: string;
+  address: string;
+  city: string;
+  zip: string;
+  country: string;
 };
 
 export type OrderPayload = {

@@ -1,4 +1,3 @@
-
 import { NextRequest, NextResponse } from 'next/server';
 import { odooCall, OdooClientError } from '@/lib/odoo-client';
 import type { OdooRecord, OrderPayload } from '@/lib/types';
@@ -52,64 +51,131 @@ export async function GET(request: NextRequest) {
   }
 }
 
-
 export async function POST(request: NextRequest) {
   try {
     const payload: OrderPayload = await request.json();
-    const { cartItems } = payload;
+    const { cartItems, customer } = payload;
 
     if (!cartItems || cartItems.length === 0) {
       return NextResponse.json({ message: 'Cart is empty.' }, { status: 400 });
     }
 
-    // 1. Find an active POS session
+    // 1. Find an active POS session and payment method
     const activeSessions = await odooCall<OdooRecord[]>('pos.session', 'search_read', {
       domain: [['state', '=', 'opened']],
-      fields: ['id', 'company_id'],
+      fields: ['id', 'config_id'],
       limit: 1,
     });
 
     if (!activeSessions || activeSessions.length === 0) {
       return NextResponse.json({ message: 'Sorry, the restaurant is currently closed. No active POS session found.' }, { status: 400 });
     }
-    const sessionId = activeSessions[0].id;
-    const companyId = activeSessions[0].company_id ? activeSessions[0].company_id[0] : false;
-
-    // 2. Prepare order lines from cart items
-    const orderLines = cartItems.map(item => [0, 0, {
-      product_id: item.product_id,
-      qty: item.quantity,
-      price_unit: item.list_price,
-      price_subtotal: item.list_price * item.quantity,
-      price_subtotal_incl: item.list_price * item.quantity,
-      note: item.notes || '',
-    }]);
-
-    // 3. Create the pos.order record following the doc
-    const orderData = {
-      name: "Web Order", // Odoo will generate a real name
-      session_id: sessionId,
-      partner_id: false, // Guest checkout
-      company_id: companyId,
-      lines: orderLines,
-      amount_tax: null,
-      amount_total: null,
-      amount_paid: null,
-      amount_return: null,
-    };
+    const session = activeSessions[0];
+    const sessionId = session.id;
+    const configId = session.config_id[0];
     
-    const newOrders = await odooCall<OdooRecord[]>('pos.order', 'create', {
-      vals_list: [orderData],
+    const posConfig = await odooCall<OdooRecord[]>('pos.config', 'read', {
+        ids: [configId],
+        fields: ['payment_method_ids']
     });
 
-    if (!newOrders || newOrders.length === 0 || !newOrders[0].id) {
-      return NextResponse.json({ message: 'Failed to create order in Odoo or retrieve new order ID.' }, { status: 500 });
+    if (!posConfig || posConfig.length === 0 || !posConfig[0].payment_method_ids?.length) {
+         return NextResponse.json({ message: 'No payment methods configured for the active POS.' }, { status: 500 });
     }
     
-    const newOrderId = newOrders[0].id;
+    const paymentMethods = await odooCall<OdooRecord[]>('pos.payment.method', 'read', {
+        ids: posConfig[0].payment_method_ids,
+        fields: ['type']
+    });
 
-    // In a real scenario, we'd proceed to payment processing here.
-    // For demo purposes, we'll consider the order created.
+    const bankPaymentMethod = paymentMethods.find(pm => pm.type === 'bank');
+    if (!bankPaymentMethod) {
+         return NextResponse.json({ message: 'No suitable online payment method found.' }, { status: 500 });
+    }
+    const paymentMethodId = bankPaymentMethod.id;
+
+
+    // 2. Find or create a customer (res.partner)
+    let partnerId: number | false = false;
+    const existingPartners = await odooCall<OdooRecord[]>('res.partner', 'search_read', {
+        domain: [['email', '=', customer.email]],
+        fields: ['id'],
+        limit: 1,
+    });
+    if (existingPartners.length > 0) {
+        partnerId = existingPartners[0].id;
+    } else {
+        const newPartnerId = await odooCall<number>('res.partner', 'create', {
+            vals: {
+                name: customer.name,
+                email: customer.email,
+                street: customer.address,
+                city: customer.city,
+                zip: customer.zip,
+                country_id: false // For simplicity, can be enhanced to search country by code
+            }
+        });
+        partnerId = newPartnerId;
+    }
+     if (!partnerId) {
+        return NextResponse.json({ message: 'Could not find or create customer.' }, { status: 500 });
+    }
+
+
+    // 3. Prepare order lines and create a DRAFT pos.order
+    const orderLines = cartItems.map(item => {
+        const subtotal = item.list_price * item.quantity;
+        return [0, 0, {
+            product_id: item.product_id,
+            qty: item.quantity,
+            price_unit: item.list_price,
+            price_subtotal: subtotal,
+            price_subtotal_incl: subtotal, // Odoo will recalculate with taxes
+            note: item.notes || '',
+        }];
+    });
+
+    const newOrderId = await odooCall<number>('pos.order', 'create', {
+      vals: {
+        name: "Web Order", // Odoo will generate a real name
+        session_id: sessionId,
+        partner_id: partnerId,
+        lines: orderLines,
+        // Let odoo compute the totals
+        amount_tax: 0, 
+        amount_total: 0,
+        amount_paid: 0,
+        amount_return: 0,
+      }
+    });
+     if (!newOrderId) {
+      return NextResponse.json({ message: 'Failed to create order in Odoo.' }, { status: 500 });
+    }
+    
+    // 4. Read the created order to get the calculated total
+     const newOrders = await odooCall<OdooRecord[]>('pos.order', 'read', {
+        ids: [newOrderId],
+        fields: ['amount_total']
+    });
+
+    if (!newOrders || newOrders.length === 0) {
+      return NextResponse.json({ message: 'Failed to read back created order.' }, { status: 500 });
+    }
+    const amountTotal = newOrders[0].amount_total;
+    
+    // 5. Create a payment record for the order
+    await odooCall<any>('pos.payment', 'create', {
+        vals: {
+            pos_order_id: newOrderId,
+            amount: amountTotal,
+            payment_method_id: paymentMethodId
+        }
+    });
+    
+    // 6. Validate the order by calling action_pos_order_paid
+    await odooCall<any>('pos.order', 'action_pos_order_paid', {
+        args: [[newOrderId]]
+    });
     
     return NextResponse.json({ success: true, orderId: newOrderId, message: `Order #${newOrderId} created successfully!` });
 
