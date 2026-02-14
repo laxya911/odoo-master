@@ -89,6 +89,11 @@ export async function POST(request: NextRequest) {
         ids: [configId],
         fields: ['payment_method_ids']
     });
+
+    if (!posConfig[0]?.payment_method_ids) {
+        throw new Error(`Could not find payment methods on POS Config ID: ${configId}`);
+    }
+
     const paymentMethodIds = posConfig[0].payment_method_ids as number[];
     const paymentMethods = await odooCall<OdooRecord[]>('pos.payment.method', 'search_read', {
         domain: [['id', 'in', paymentMethodIds], ['is_cash_count', '=', true]],
@@ -108,33 +113,31 @@ export async function POST(request: NextRequest) {
     // 3. Find or create a customer (res.partner)
     console.log(`Step 3: Finding or creating customer for email: ${customer.email}`);
     let partnerId: number | false = false;
-    const existingPartners = await odooCall<OdooRecord[]>('res.partner', 'search_read', {
-        domain: [['email', '=', customer.email]],
-        fields: ['id'],
-        limit: 1,
-    });
+    if (customer.email) {
+      const existingPartners = await odooCall<OdooRecord[]>('res.partner', 'search_read', {
+          domain: [['email', '=', customer.email]],
+          fields: ['id'],
+          limit: 1,
+      });
 
-    if (existingPartners.length > 0) {
-        partnerId = existingPartners[0].id as number;
-        console.log(`Found existing partner with ID: ${partnerId}`);
-    } else {
-        console.log("No existing partner found, creating a new one...");
-        const newPartnerPayload = { name: customer.name, email: customer.email };
-        console.log("New partner payload:", newPartnerPayload);
-        const newPartnerIds = await odooCall<number[]>('res.partner', 'create', {
-            vals_list: [newPartnerPayload]
-        });
-        if (!newPartnerIds || newPartnerIds.length === 0) {
-           throw new Error("Partner creation did not return an ID.");
-        }
-        partnerId = newPartnerIds[0];
-        console.log(`Created new partner with ID: ${partnerId}`);
+      if (existingPartners.length > 0) {
+          partnerId = existingPartners[0].id as number;
+          console.log(`Found existing partner with ID: ${partnerId}`);
+      } else {
+          console.log("No existing partner found, creating a new one...");
+          const newPartnerPayload = { name: customer.name, email: customer.email };
+          console.log("New partner payload:", newPartnerPayload);
+          const newPartnerIds = await odooCall<number[]>('res.partner', 'create', {
+              vals_list: [newPartnerPayload]
+          });
+          if (!newPartnerIds || newPartnerIds.length === 0) {
+             throw new Error("Partner creation did not return an ID.");
+          }
+          partnerId = newPartnerIds[0];
+          console.log(`Created new partner with ID: ${partnerId}`);
+      }
     }
 
-     if (!partnerId) {
-        console.error("Failed to find or create a partner.");
-        return NextResponse.json({ message: 'Could not find or create customer.' }, { status: 500 });
-    }
 
     // 4. Prepare order lines and create a DRAFT pos.order
     console.log("Step 4: Preparing order lines...");
@@ -156,6 +159,10 @@ export async function POST(request: NextRequest) {
         partner_id: partnerId,
         lines: orderLines,
         to_invoice: false,
+        amount_tax: 0,
+        amount_total: 0,
+        amount_paid: 0,
+        amount_return: 0,
     };
     
     console.log("Step 5: Creating draft POS order...");
