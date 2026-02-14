@@ -65,7 +65,6 @@ export async function POST(request: NextRequest) {
       orderType: payload.orderType
     });
 
-    // Fix for "Cannot read properties of undefined (reading 'length')"
     if (!payload.orderLines || payload.orderLines.length === 0) {
       return NextResponse.json({ message: 'Cart is empty or orderLines are missing.' }, { status: 400 });
     }
@@ -215,11 +214,7 @@ export async function POST(request: NextRequest) {
     // 8. Validate the order to move it to "Paid" state and generate invoice
     console.log(`Step 8: Validating order #${newOrderId}...`);
      const validationResult = await odooCall<any>(ODOO_MODEL, 'action_pos_order_paid', {
-        kwargs: {
-          context: {
-            active_ids: [newOrderId]
-          }
-        }
+        ids: [newOrderId]
     });
     console.log("Order validation result:", validationResult);
 
