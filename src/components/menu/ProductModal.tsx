@@ -209,7 +209,8 @@ export default function ProductModal({
                       : (line as any).combo_category_id
                     : `Option ${(line as any).id}`
                   const maxItems = ((line as any).max_item as number) || 1
-                  const includedItems = ((line as any).included_item as number) || 0
+                  const includedItems =
+                    ((line as any).included_item as number) || 0
                   const isRequired = Boolean((line as any).required)
 
                   return (
@@ -217,7 +218,9 @@ export default function ProductModal({
                       <div className='flex justify-between'>
                         <Label>
                           {lineName}
-                          {isRequired && <span className='text-destructive'>*</span>}
+                          {isRequired && (
+                            <span className='text-destructive'>*</span>
+                          )}
                         </Label>
                         <span className='text-xs text-muted-foreground'>
                           Max {maxItems} {maxItems === 1 ? 'item' : 'items'}
@@ -225,7 +228,8 @@ export default function ProductModal({
                         </span>
                       </div>
                       <p className='text-xs text-muted-foreground'>
-                        Select up to {maxItems} option{maxItems !== 1 ? 's' : ''}
+                        Select up to {maxItems} option
+                        {maxItems !== 1 ? 's' : ''}
                       </p>
                     </div>
                   )
