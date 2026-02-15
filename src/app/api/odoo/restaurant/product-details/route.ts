@@ -1,4 +1,5 @@
 
+
 import { NextRequest, NextResponse } from 'next/server'
 import { odooCall, OdooClientError } from '@/lib/odoo-client'
 
@@ -40,7 +41,6 @@ export async function GET(request: NextRequest) {
     }
     const prodId = Number(idParam)
 
-    // 1) Read product.product to get template id and basic info
     const products = await odooCall<any[]>('product.product', 'read', {
       ids: [prodId],
       fields: [
@@ -60,7 +60,6 @@ export async function GET(request: NextRequest) {
     const product = products[0]
     const tmplId = product.product_tmpl_id?.[0]
 
-    // 2) Attribute lines for this template
     const attributeLines: AttributeLine[] = []
     if (tmplId && product.attribute_line_ids?.length > 0) {
       const lines = await odooCall<any[]>('product.template.attribute.line', 'search_read', {
@@ -82,7 +81,7 @@ export async function GET(request: NextRequest) {
           valueIds.length > 0
             ? await odooCall<AttributeValue[]>('product.attribute.value', 'read', {
                 ids: valueIds,
-                fields: ['id', 'name', 'price_extra'],
+                fields: ['id', 'name'],
               })
             : []
 
@@ -94,7 +93,6 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 3) Combo lines via product.template -> product.combo -> product.combo.item
     const comboLines: ComboLine[] = []
     if (tmplId) {
       const templates = await odooCall<any[]>('product.template', 'read', {
@@ -107,11 +105,7 @@ export async function GET(request: NextRequest) {
       if (comboIds.length > 0) {
         const combos = await odooCall<any[]>('product.combo', 'read', {
           ids: comboIds,
-          fields: [
-            'id',
-            'included_item',
-            'required',
-          ],
+          fields: ['id'],
         })
 
         const comboItems = await odooCall<any[]>('product.combo.item', 'search_read', {
@@ -120,22 +114,16 @@ export async function GET(request: NextRequest) {
         })
 
         const productsByComboId: Record<number, number[]> = {}
-        const productIdsFromItems: number[] = []
         for (const item of comboItems) {
-          // Safely access M2O fields, which can be `false` if not set
-          const comboId = Array.isArray(item.combo_id) ? item.combo_id[0] : null
-          const productId = Array.isArray(item.product_id) ? item.product_id[0] : null
-    
-          if (comboId && productId) {
-            if (!productsByComboId[comboId]) {
-              productsByComboId[comboId] = []
-            }
-            productsByComboId[comboId].push(productId)
-            productIdsFromItems.push(productId)
+          const comboId = item.combo_id[0]
+          const productId = item.product_id[0]
+          if (!productsByComboId[comboId]) {
+            productsByComboId[comboId] = []
           }
+          productsByComboId[comboId].push(productId)
         }
-    
-        const allProductIds = [...new Set(productIdsFromItems)]
+
+        const allProductIds = [...new Set(Object.values(productsByComboId).flat())];
 
         let productDetailsMap: Record<number, { id: number; name: string; list_price: number }> = {}
         if (allProductIds.length > 0) {
@@ -154,10 +142,10 @@ export async function GET(request: NextRequest) {
 
           comboLines.push({
             id: combo.id,
-            combo_category_id: combo.combo_category_id,
-            max_item: combo.max_item || 1,
-            included_item: combo.included_item || 0,
-            required: Boolean(combo.required),
+            combo_category_id: (combo as any).combo_category_id,
+            max_item: (combo as any).max_item || 1,
+            included_item: 0, // Assuming 0 as the field is not available
+            required: false, // Assuming false as the field is not available
             products: productsList,
           })
         }
