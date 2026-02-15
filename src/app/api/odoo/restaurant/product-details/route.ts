@@ -109,7 +109,6 @@ export async function GET(request: NextRequest) {
           ids: comboIds,
           fields: [
             'id',
-            'max_item',
             'included_item',
             'required',
           ],
