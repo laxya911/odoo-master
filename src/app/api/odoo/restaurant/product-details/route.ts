@@ -122,16 +122,22 @@ export async function GET(request: NextRequest) {
         })
 
         const productsByComboId: Record<number, number[]> = {}
+        const productIdsFromItems: number[] = []
         for (const item of comboItems) {
-          const comboId = item.combo_id[0]
-          const productId = item.product_id[0]
-          if (!productsByComboId[comboId]) {
-            productsByComboId[comboId] = []
+          // Safely access M2O fields, which can be `false` if not set
+          const comboId = Array.isArray(item.combo_id) ? item.combo_id[0] : null
+          const productId = Array.isArray(item.product_id) ? item.product_id[0] : null
+    
+          if (comboId && productId) {
+            if (!productsByComboId[comboId]) {
+              productsByComboId[comboId] = []
+            }
+            productsByComboId[comboId].push(productId)
+            productIdsFromItems.push(productId)
           }
-          productsByComboId[comboId].push(productId)
         }
-
-        const allProductIds = [...new Set(comboItems.map(item => item.product_id[0]))]
+    
+        const allProductIds = [...new Set(productIdsFromItems)]
 
         let productDetailsMap: Record<number, { id: number; name: string; list_price: number }> = {}
         if (allProductIds.length > 0) {
