@@ -68,5 +68,4 @@ export type OrderPayload = {
   paymentMethod: string
   orderType: 'dine-in' | 'delivery'
   total: number
-  notes?: string
 }

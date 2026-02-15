@@ -1,5 +1,3 @@
-'use client'
-
 import type { Product } from '@/lib/types'
 import Image from 'next/image'
 import { Button } from '@/components/ui/button'
@@ -23,75 +21,48 @@ export function ProductCard({ product }: ProductCardProps) {
     unknown
   > | null>(null)
 
-  // Flags from Odoo product
   const attribute_line_ids =
-    (product as unknown as { attribute_line_ids?: number[] })
-      .attribute_line_ids || []
-  const combo_ids =
-    (product as unknown as { combo_ids?: number[] }).combo_ids || []
+    (product as any).attribute_line_ids || []
+  const combo_ids = (product as any).combo_ids || []
+  const hasVariants = Array.isArray(attribute_line_ids) && attribute_line_ids.length > 0;
+  const hasComboIds = Array.isArray(combo_ids) && combo_ids.length > 0;
+  const isConfigurable = hasVariants || hasComboIds;
 
-  const hasVariants =
-    Array.isArray(attribute_line_ids) && attribute_line_ids.length > 0
-  const hasComboIds = Array.isArray(combo_ids) && combo_ids.length > 0
-
-  const isCombo = hasComboIds
-  const isConfigurable = hasVariants || isCombo
-
-  console.log(
-    '[ProductCard] flags:',
-    product.id,
-    product.display_name || product.name,
-    {
-      hasVariants,
-      hasComboIds,
-      isCombo,
-      isConfigurable,
-    },
-  )
 
   const handleAddToCart = async () => {
-    console.log('[ProductCard] click', product.id, { isConfigurable })
-
     if (!isConfigurable) {
-      console.log('[ProductCard] simple → addToCart', product.id)
       addToCart(product)
       return
     }
 
-    console.log(
-      '[ProductCard] configurable → fetch product-details',
-      product.id,
-    )
-
     try {
-      const r = await fetch(
+      const response = await fetch(
         `/api/odoo/restaurant/product-details?id=${product.id}`,
       )
       console.log(
         '[ProductCard] product-details fetch status',
         product.id,
-        r.status,
-      )
-      const data = await r.json()
-      console.log('[ProductCard] product-details raw', product.id, data)
+        response.status,
+      );
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json()
 
       const hasAttributes =
         Array.isArray(data?.attributes) && data.attributes.length > 0
       const hasComboLines =
         Array.isArray(data?.comboLines) && data.comboLines.length > 0
 
-      console.log('[ProductCard] details flags:', product.id, {
+        console.log('[ProductCard] details flags:', product.id, {
         hasAttributes,
         hasComboLines,
-      })
+      });
 
       if (hasAttributes || hasComboLines) {
         setInitialDetails(data)
         setModalOpen(true)
       } else {
-        console.log(
-          '[ProductCard] no attributes/comboLines → addToCart fallback',
-        )
         addToCart(product)
       }
     } catch (e) {

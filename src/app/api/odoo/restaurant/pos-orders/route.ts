@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
       newPartnerPayload.city = customer.city
       newPartnerPayload.zip = customer.zip
       // Assuming a default country, would need a lookup in a real app
-      newPartnerPayload.country_id = customer.country ? 236 : false
+      newPartnerPayload.country_id = customer.country ? 236 : false // India Country ID
     }
 
     if (customer.email) {
