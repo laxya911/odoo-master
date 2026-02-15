@@ -217,6 +217,25 @@ export async function POST(request: NextRequest) {
       'Step 4: Preparing order lines and computing taxes server-side...',
     )
 
+    /**
+     * TAX HANDLING AT BACKEND
+     *
+     * Frontend sends products with list_price (which is the final displayed price).
+     * Backend fetches each product's tax configuration and breaks down the amount:
+     * 1. For each product, fetch its taxes (tax_ids) from Odoo
+     * 2. For each tax, check if price_include is true or false:
+     *    - price_include=True: The price from frontend is tax-included
+     *    - price_include=False: The price from frontend is pre-tax, add tax on top
+     * 3. Compute amount_tax and amount_total for the order
+     * 4. Create invoice with proper tax breakdown
+     *
+     * FLOW:
+     * - Frontend: User sees ¥39 product price, adds to cart, shows total ¥39
+     * - Backend: Receives product id, qty, list_price ¥39
+     * - Backend: Fetches product taxes, calculates breakdown (subtotal + tax = total)
+     * - Invoice: Shows breakdown with subtotal, tax amount, and total
+     */
+
     // Fetch product tax relations for all products in the cart
     const productIds = Array.from(new Set(cartItems.map((i) => i.product_id)))
     const productsWithTaxes = await odooCall<Record<string, unknown>[]>(

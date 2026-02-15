@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useCart } from '@/context/CartContext'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,7 +10,18 @@ import Image from 'next/image'
 import { Minus, Plus, X } from 'lucide-react'
 import { useDebouncedCallback } from 'use-debounce'
 import { useToast } from '@/hooks/use-toast'
+import { formatCurrency } from '@/lib/utils'
 import { CheckoutDialog } from './CheckoutDialog'
+
+interface ProductTaxData {
+  product_id: number
+  taxes: Array<{
+    id: number
+    name: string
+    amount: number
+    price_include: boolean
+  }>
+}
 
 export function Cart() {
   const {
@@ -22,8 +33,68 @@ export function Cart() {
     clearCart,
   } = useCart()
   const [isCheckoutOpen, setCheckoutOpen] = useState(false)
+  const [productTaxes, setProductTaxes] = useState<
+    Record<number, ProductTaxData>
+  >({})
   const { toast } = useToast()
-  const total = getCartTotal()
+  const subtotal = getCartTotal()
+
+  // Fetch taxes for all products in cart
+  useEffect(() => {
+    if (cartItems.length === 0) {
+      setProductTaxes({})
+      return
+    }
+
+    const productIds = Array.from(
+      new Set(cartItems.map((item) => item.product.id)),
+    )
+    const idsParam = productIds.join(',')
+
+    fetch(`/api/odoo/product-taxes?ids=${idsParam}`)
+      .then((r) => r.json())
+      .then((data) => {
+        const taxMap: Record<number, ProductTaxData> = {}
+        if (data.data) {
+          for (const item of data.data) {
+            taxMap[item.product_id] = item
+          }
+        }
+        setProductTaxes(taxMap)
+      })
+      .catch((err) => console.error('Failed to fetch product taxes:', err))
+  }, [cartItems])
+
+  // Calculate tax for a product
+  const calculateItemTax = (
+    productId: number,
+    quantity: number,
+    price: number,
+  ): number => {
+    const taxData = productTaxes[productId]
+    if (!taxData || taxData.taxes.length === 0) return 0
+
+    let totalTax = 0
+    for (const tax of taxData.taxes) {
+      if (typeof tax.amount === 'number' && !tax.price_include) {
+        const rate = tax.amount / 100
+        totalTax += price * quantity * rate
+      }
+    }
+    return Number(totalTax.toFixed(2))
+  }
+
+  // Calculate total tax for all items
+  const totalTax = cartItems.reduce((sum, item) => {
+    const itemTax = calculateItemTax(
+      item.product.id,
+      item.quantity,
+      item.product.list_price,
+    )
+    return sum + itemTax
+  }, 0)
+
+  const total = subtotal + totalTax
 
   const handleNoteChange = useDebouncedCallback(
     (cartItemId: string, notes: string) => {
@@ -86,10 +157,7 @@ export function Cart() {
                   <div className='flex-1'>
                     <p className='font-semibold'>{item.product.name}</p>
                     <p className='text-sm font-bold text-muted-foreground'>
-                      {new Intl.NumberFormat('en-US', {
-                        style: 'currency',
-                        currency: 'USD',
-                      }).format(item.product.list_price)}
+                      {formatCurrency(item.product.list_price)}
                     </p>
                     <div className='mt-2 flex items-center gap-2'>
                       <Button
@@ -140,19 +208,24 @@ export function Cart() {
           </ScrollArea>
         )}
 
-        <div className='mt-auto border-t p-6'>
+        <div className='mt-auto border-t p-6 space-y-3'>
+          <div className='flex justify-between text-sm'>
+            <span className='text-muted-foreground'>Subtotal</span>
+            <span>{formatCurrency(subtotal)}</span>
+          </div>
+          {totalTax > 0 && (
+            <>
+              <div className='flex justify-between text-sm'>
+                <span className='text-muted-foreground'>Tax</span>
+                <span>{formatCurrency(totalTax)}</span>
+              </div>
+              <Separator />
+            </>
+          )}
           <div className='flex justify-between text-lg font-bold'>
             <span>Total</span>
-            <span>
-              {new Intl.NumberFormat('en-US', {
-                style: 'currency',
-                currency: 'USD',
-              }).format(total)}
-            </span>
+            <span>{formatCurrency(total)}</span>
           </div>
-          <p className='text-right text-xs text-muted-foreground'>
-            Taxes calculated at checkout
-          </p>
           <Button
             size='lg'
             className='w-full mt-4'
@@ -169,6 +242,8 @@ export function Cart() {
         onCheckoutSuccess={handleCheckoutSuccess}
         cartItems={cartItems}
         total={total}
+        subtotal={subtotal}
+        totalTax={totalTax}
       />
     </>
   )

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { PlusCircle } from 'lucide-react'
 import { useCart } from '@/context/CartContext'
+import { formatCurrency } from '@/lib/utils'
 import dynamic from 'next/dynamic'
 import { useState } from 'react'
 
@@ -22,12 +23,12 @@ export function ProductCard({ product }: ProductCardProps) {
   > | null>(null)
 
   const attribute_line_ids =
-    (product as any).attribute_line_ids || []
-  const combo_ids = (product as any).combo_ids || []
-  const hasVariants = Array.isArray(attribute_line_ids) && attribute_line_ids.length > 0;
-  const hasComboIds = Array.isArray(combo_ids) && combo_ids.length > 0;
-  const isConfigurable = hasVariants || hasComboIds;
-
+    (product as Record<string, unknown>).attribute_line_ids || []
+  const combo_ids = (product as Record<string, unknown>).combo_ids || []
+  const hasVariants =
+    Array.isArray(attribute_line_ids) && attribute_line_ids.length > 0
+  const hasComboIds = Array.isArray(combo_ids) && combo_ids.length > 0
+  const isConfigurable = hasVariants || hasComboIds
 
   const handleAddToCart = async () => {
     if (!isConfigurable) {
@@ -43,9 +44,9 @@ export function ProductCard({ product }: ProductCardProps) {
         '[ProductCard] product-details fetch status',
         product.id,
         response.status,
-      );
+      )
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        throw new Error(`HTTP error! status: ${response.status}`)
       }
       const data = await response.json()
 
@@ -54,10 +55,10 @@ export function ProductCard({ product }: ProductCardProps) {
       const hasComboLines =
         Array.isArray(data?.comboLines) && data.comboLines.length > 0
 
-        console.log('[ProductCard] details flags:', product.id, {
+      console.log('[ProductCard] details flags:', product.id, {
         hasAttributes,
         hasComboLines,
-      });
+      })
 
       if (hasAttributes || hasComboLines) {
         setInitialDetails(data)
@@ -74,6 +75,7 @@ export function ProductCard({ product }: ProductCardProps) {
   return (
     <Card
       onClick={() => {
+        if (isModalOpen) return
         void handleAddToCart()
       }}
       className='flex flex-col overflow-hidden transition-all hover:shadow-lg cursor-pointer'
@@ -100,10 +102,7 @@ export function ProductCard({ product }: ProductCardProps) {
           {product.name}
         </CardTitle>
         <p className='flex-1 text-lg font-bold text-primary'>
-          {new Intl.NumberFormat('en-US', {
-            style: 'currency',
-            currency: 'USD',
-          }).format(product.list_price)}
+          {formatCurrency(product.list_price)}
         </p>
       </div>
 
@@ -120,15 +119,17 @@ export function ProductCard({ product }: ProductCardProps) {
         </Button>
 
         {isModalOpen && (
-          <ProductModal
-            product={product}
-            isOpen={isModalOpen}
-            onClose={() => {
-              setModalOpen(false)
-              setInitialDetails(null)
-            }}
-            initialDetails={initialDetails}
-          />
+          <div onClick={(e) => e.stopPropagation()}>
+            <ProductModal
+              product={product}
+              isOpen={isModalOpen}
+              onClose={() => {
+                setModalOpen(false)
+                setInitialDetails(null)
+              }}
+              initialDetails={initialDetails}
+            />
+          </div>
         )}
       </CardFooter>
     </Card>
