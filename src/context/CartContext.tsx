@@ -1,16 +1,12 @@
 'use client'
 
 import React, { createContext, useContext, useState, useCallback } from 'react'
-import type { Product, CartItem } from '@/lib/types'
+import type { Product, CartItem, CartItemMeta } from '@/lib/types'
 import { useToast } from '@/hooks/use-toast'
 
 interface CartContextType {
   cartItems: CartItem[]
-  addToCart: (
-    product: Product,
-    quantity?: number,
-    opts?: { selectedOptionIds?: number[]; extras?: Product[] },
-  ) => void
+  addToCart: (product: Product, quantity?: number, meta?: CartItemMeta) => void
   removeFromCart: (cartItemId: string) => void
   updateItemQuantity: (cartItemId: string, quantity: number) => void
   updateItemNotes: (cartItemId: string, notes: string) => void
@@ -33,25 +29,38 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const { toast } = useToast()
 
   const addToCart = useCallback(
-    (
-      product: Product,
-      quantity: number = 1,
-      opts?: { selectedOptionIds?: number[]; extras?: Product[] },
-    ) => {
+    (product: Product, quantity: number = 1, meta?: CartItemMeta) => {
       setCartItems((prevItems) => {
-        // Determine equality: same product id and same selectedOptionIds and same extras ids
+        // Determine equality: same product id and same metadata
         const existingItem = prevItems.find((item) => {
           if (item.product.id !== product.id) return false
-          const a = item.selectedOptionIds || []
-          const b = opts?.selectedOptionIds || []
-          if (a.length !== b.length) return false
-          // compare values
-          const sameOptions = a.every((v) => b.includes(v))
-          if (!sameOptions) return false
-          const extraA = (item.extras || []).map((e) => e.id).sort()
-          const extraB = (opts?.extras || []).map((e) => e.id).sort()
+
+          // Compare metadata: attributes
+          const attrA = item.meta?.attribute_value_ids || []
+          const attrB = meta?.attribute_value_ids || []
+          if (attrA.length !== attrB.length) return false
+          if (!attrA.every((v) => attrB.includes(v))) return false
+
+          // Compare metadata: combo selections
+          const comboA = item.meta?.combo_selections || []
+          const comboB = meta?.combo_selections || []
+          if (comboA.length !== comboB.length) return false
+          for (let i = 0; i < comboA.length; i++) {
+            if (comboA[i].combo_line_id !== comboB[i]?.combo_line_id)
+              return false
+            const pidsA = comboA[i].product_ids.sort()
+            const pidsB = (comboB[i]?.product_ids || []).sort()
+            if (pidsA.length !== pidsB.length) return false
+            if (!pidsA.every((p, idx) => p === pidsB[idx])) return false
+          }
+
+          // Compare metadata: extras
+          const extraA = (item.meta?.extras || []).map((e) => e.id).sort()
+          const extraB = (meta?.extras || []).map((e) => e.id).sort()
           if (extraA.length !== extraB.length) return false
-          return extraA.every((v, idx) => v === extraB[idx])
+          if (!extraA.every((v, idx) => v === extraB[idx])) return false
+
+          return true
         })
 
         if (existingItem) {
@@ -65,8 +74,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             id: crypto.randomUUID(),
             product,
             quantity,
-            selectedOptionIds: opts?.selectedOptionIds,
-            extras: opts?.extras,
+            meta,
           }
           return [...prevItems, newCartItem]
         }

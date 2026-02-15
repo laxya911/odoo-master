@@ -10,13 +10,21 @@ export type Product = OdooRecord & {
   attribute_line_ids: number[]
 }
 
+export type CartItemMeta = {
+  attribute_value_ids?: number[]
+  combo_selections?: Array<{
+    combo_line_id: number
+    product_ids: number[]
+  }>
+  extras?: Product[]
+}
+
 export type CartItem = {
   id: string // Unique ID for the cart item instance
   product: Product
   quantity: number
   notes?: string
-  selectedOptionIds?: number[]
-  extras?: Product[]
+  meta?: CartItemMeta // Metadata for configured products
 }
 
 export type OrderLineItem = {
