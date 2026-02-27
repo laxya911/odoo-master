@@ -11,14 +11,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Utensils, Github, Mail, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
 export default function AuthPage() {
     const { login, signup } = useAuth();
     const router = useRouter();
+    const searchParams = useSearchParams();
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    const callbackUrl = searchParams.get('callbackUrl') || '/profile';
 
     // Login states
     const [loginEmail, setLoginEmail] = useState('');
@@ -36,7 +39,7 @@ export default function AuthPage() {
         setError(null);
         try {
             await login(loginEmail, loginPassword);
-            router.push('/profile');
+            router.push(callbackUrl);
         } catch (err: unknown) {
             const error = err as Error;
             setError(error.message || 'Login failed');
@@ -48,13 +51,14 @@ export default function AuthPage() {
         e.preventDefault();
         if (regPassword !== confirmPassword) {
             setError('Passwords do not match');
+            setIsLoading(false);
             return;
         }
         setIsLoading(true);
         setError(null);
         try {
             await signup(regName, regEmail, regPassword);
-            router.push('/profile');
+            router.push(callbackUrl);
         } catch (err: unknown) {
             const error = err as Error;
             setError(error.message || 'Signup failed');

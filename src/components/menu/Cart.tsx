@@ -316,7 +316,7 @@ export function Cart() {
                   title: 'Sign In Required',
                   description: 'Please log in or sign up to complete your checkout.',
                 })
-                router.push(`/auth/signin?callbackUrl=${encodeURIComponent(window.location.href)}`)
+                router.push(`/auth?callbackUrl=${encodeURIComponent(window.location.href)}`)
                 return
               }
               setCheckoutOpen(true)

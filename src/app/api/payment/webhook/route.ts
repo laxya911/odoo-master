@@ -8,7 +8,8 @@ import type { OrderPayload } from '@/lib/types';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
-  console.log('--- Received Stripe Webhook ---');
+  console.log('--- RECEIVED STRIPE WEBHOOK PING ---');
+  console.log('Target URL: /api/payment/webhook');
   try {
     // 1. Fetch active Stripe provider from Odoo to get keys
     const providers = await odooCall<any[]>('payment.provider', 'search_read', {

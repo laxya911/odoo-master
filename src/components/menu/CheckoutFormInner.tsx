@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 import { useStripe, useElements, PaymentElement } from '@stripe/react-stripe-js';
 import { useFormContext, Controller } from 'react-hook-form';
 import { Loader2, ShoppingBag } from 'lucide-react';
@@ -25,14 +25,14 @@ interface CheckoutFormInnerProps {
     provider: PaymentProvider;
 }
 
-export function CheckoutFormInner({
+export const CheckoutFormInner = memo(({
     cartItems,
     total,
     totalTax,
     onCancel,
     onSuccess,
     provider
-}: CheckoutFormInnerProps) {
+}: CheckoutFormInnerProps) => {
     const [isProcessing, setIsProcessing] = useState(false);
 
     const { formatPrice } = useCompany();
@@ -254,4 +254,4 @@ export function CheckoutFormInner({
             </footer>
         </form>
     );
-}
+});

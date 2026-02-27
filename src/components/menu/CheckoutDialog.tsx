@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo, memo } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -54,20 +54,20 @@ interface CheckoutDialogProps {
   totalTax: number
 }
 
-export function CheckoutDialog({
+const CheckoutDialog = memo(({
   isOpen,
   onClose,
   cartItems,
   total,
   subtotal,
   totalTax,
-}: CheckoutDialogProps) {
+}: CheckoutDialogProps) => {
   const [isSuccess, setIsSuccess] = useState(false)
   const [placedOrderId, setPlacedOrderId] = useState<number | null>(null)
   const [placedOrderRef, setPlacedOrderRef] = useState<string | null>(null)
   const [config, setConfig] = useState<PaymentConfigResponse | null>(null)
   const [clientSecret, setClientSecret] = useState<string | null>(null)
-  const [stripePromise, setStripePromise] = useState<any>(null)
+  const [stripePromise, setStripePromise] = useState<Promise<any> | null>(null)
 
   const { user, isAuthenticated } = useAuth()
   const { clearCart } = useCart()
@@ -287,4 +287,7 @@ export function CheckoutDialog({
       </DialogContent>
     </Dialog>
   )
-}
+})
+
+CheckoutDialog.displayName = 'CheckoutDialog';
+export { CheckoutDialog };
