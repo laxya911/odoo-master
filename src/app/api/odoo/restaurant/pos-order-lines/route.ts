@@ -4,6 +4,8 @@ import type { OdooRecord } from '@/lib/types';
 
 const ODOO_MODEL = "pos.order.line";
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;

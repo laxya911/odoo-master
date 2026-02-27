@@ -33,7 +33,7 @@ type TablesClientProps = {
   floors: OdooRecord[];
 };
 
-const renderCellContent = (value: any) => {
+const renderCellContent = (value: unknown) => {
   if (value === false || value === null || value === undefined) {
     return <span className="text-muted-foreground">N/A</span>;
   }
@@ -56,7 +56,7 @@ export function TablesClient({ initialData, floors }: TablesClientProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
 
   const handleFloorChange = (floorId: string) => {
     const params = new URLSearchParams(searchParams);
@@ -80,7 +80,7 @@ export function TablesClient({ initialData, floors }: TablesClientProps) {
         <CardDescription>
           {`Displaying ${initialData.data.length} of ${initialData.meta.total} tables from Odoo model: ${initialData.meta.model}`}
         </CardDescription>
-         <div className="flex items-center gap-2 pt-4">
+        <div className="flex items-center gap-2 pt-4">
           <Select
             onValueChange={handleFloorChange}
             defaultValue={searchParams.get("floor_id") || "all"}

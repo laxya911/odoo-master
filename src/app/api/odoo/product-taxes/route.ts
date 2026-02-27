@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { odooCall, OdooClientError } from '@/lib/odoo-client'
 
+export const dynamic = 'force-dynamic'
+
 export interface TaxInfo {
   id: number
   name: string

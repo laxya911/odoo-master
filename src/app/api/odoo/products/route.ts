@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { odooCall, OdooClientError } from '@/lib/odoo-client';
 import type { Product } from '@/lib/types';
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -10,7 +12,7 @@ export async function GET(request: NextRequest) {
     const name = searchParams.get('name');
     const active = searchParams.get('active');
 
-    const domain: any[] = [];
+    const domain: unknown[] = [];
     if (name) {
       domain.push(['name', 'ilike', name]);
     }

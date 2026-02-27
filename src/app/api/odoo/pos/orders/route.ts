@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { odooCall, OdooClientError } from '@/lib/odoo-client';
 import type { PosOrder } from '@/lib/types';
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -10,7 +12,7 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('start_date');
     const endDate = searchParams.get('end_date');
     
-    const domain: any[] = [];
+    const domain: unknown[] = [];
     if (startDate) {
       domain.push(['date_order', '>=', startDate]);
     }

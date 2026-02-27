@@ -4,6 +4,8 @@ import type { OdooRecord } from '@/lib/types';
 
 const ODOO_MODEL = "res.partner";
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -11,12 +13,12 @@ export async function GET(request: NextRequest) {
     const offset = parseInt(searchParams.get('offset') || '0', 10);
     const query = searchParams.get('q');
 
-    const domain: any[] = [['customer_rank', '>', 0]];
+    const domain: unknown[] = [['customer_rank', '>', 0]];
     if (query) {
       domain.push('|', ['name', 'ilike', query], ['email', 'ilike', query]);
     }
 
-    const fieldsDef = await odooCall<Record<string, any>>(ODOO_MODEL, 'fields_get', {});
+    const fieldsDef = await odooCall<Record<string, unknown>>(ODOO_MODEL, 'fields_get', {});
     const fieldNames = Object.keys(fieldsDef);
     
     const total = await odooCall<number>(ODOO_MODEL, 'search_count', { domain });

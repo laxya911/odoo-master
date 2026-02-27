@@ -4,15 +4,17 @@ import type { OdooRecord } from '@/lib/types';
 
 const ODOO_MODEL = "pos.config";
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const limit = parseInt(searchParams.get('limit') || '20', 10);
     const offset = parseInt(searchParams.get('offset') || '0', 10);
 
-    const domain: any[] = [['active', '=', true]];
+    const domain: unknown[] = [['active', '=', true]];
 
-    const fieldsDef = await odooCall<Record<string, any>>(ODOO_MODEL, 'fields_get', {});
+    const fieldsDef = await odooCall<Record<string, unknown>>(ODOO_MODEL, 'fields_get', {});
     const fieldNames = Object.keys(fieldsDef);
     
     const total = await odooCall<number>(ODOO_MODEL, 'search_count', { domain });

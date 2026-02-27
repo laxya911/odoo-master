@@ -28,7 +28,7 @@ type PosOrdersClientProps = {
   initialData: Paginated<OdooRecord>;
 };
 
-const renderCellContent = (value: any) => {
+const renderCellContent = (value: unknown) => {
   if (value === false || value === null || value === undefined) {
     return <span className="text-muted-foreground">N/A</span>;
   }
@@ -51,7 +51,7 @@ export function PosOrdersClient({ initialData }: PosOrdersClientProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
 
   const [date, setDate] = useState<DateRange | undefined>(() => {
     const from = searchParams.get('start_date');

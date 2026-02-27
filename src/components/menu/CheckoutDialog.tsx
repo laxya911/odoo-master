@@ -1,334 +1,289 @@
 'use client'
 
-import { useState } from 'react'
-import { useForm, Controller } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import * as z from 'zod'
+import { useState, useEffect } from 'react'
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
   DialogTitle,
-  DialogDescription,
-  DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Badge } from '@/components/ui/badge'
+
+
+import { zodResolver } from '@hookform/resolvers/zod'
+import { useForm, FormProvider } from 'react-hook-form'
+import { z } from 'zod'
+import { Loader2, CheckCircle2 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
-import { createOrder } from '@/lib/actions'
-import { formatCurrency } from '@/lib/utils'
-import type {
-  CartItem,
-  OrderPayload,
-  OrderLineItem,
-  CustomerDetails,
-} from '@/lib/types'
-import { Loader2 } from 'lucide-react'
-import { Separator } from '../ui/separator'
+import type { CartItem, PaymentProvider } from '@/lib/types'
+import { useCompany } from '@/context/CompanyContext'
+import { useSession } from '@/context/SessionContext'
+import { useAuth } from '@/context/AuthContext'
+import { useCart } from '@/context/CartContext'
+import { cn } from '@/lib/utils'
+import { motion, AnimatePresence } from 'framer-motion'
+import { useRouter } from 'next/navigation'
+import { loadStripe } from '@stripe/stripe-js'
+import { Elements } from '@stripe/react-stripe-js'
+import { CheckoutFormInner } from './CheckoutFormInner'
+import type { PaymentConfigResponse } from '@/lib/types'
 
 const checkoutSchema = z.object({
-  orderType: z.enum(['dine-in', 'delivery']),
-  name: z.string().min(2, 'Name must be at least 2 characters.'),
-  email: z.string().email('Please enter a valid email address.'),
-  paymentMethod: z.enum(['cash', 'online_demo']),
-  // delivery fields (optional here; UI can show/hide and we perform minimal validation client-side)
-  street: z.string().optional(),
-  street2: z.string().optional(),
-  phone: z.string().optional(),
-  city: z.string().optional(),
-  zip: z.string().optional(),
-  country: z.string().optional(),
+  name: z.string().min(2, { message: 'Name must be at least 2 characters.' }),
+  phone: z.string().min(10, { message: 'Phone number must be at least 10 digits.' }),
+  email: z.string().email({ message: 'Please enter a valid email address.' }),
+  street: z.string().min(5, { message: 'Address is required.' }),
+  city: z.string().min(2, { message: 'City is required.' }),
+  zip: z.string().min(4, { message: 'Zip code is required.' }),
+  orderType: z.enum(['dine-in', 'takeout', 'delivery']),
+  tableNumber: z.string().optional(),
+  notes: z.string().optional(),
+  paymentMethod: z.custom<PaymentProvider>((val) => {
+    return typeof val === 'string' && ['stripe', 'razorpay', 'paypal', 'demo_online'].includes(val);
+  }, { message: "Invalid payment method" }),
 })
 
 type CheckoutFormValues = z.infer<typeof checkoutSchema>
 
-type CheckoutDialogProps = {
+interface CheckoutDialogProps {
   isOpen: boolean
   onClose: () => void
-  onCheckoutSuccess: (orderId: number) => void
   cartItems: CartItem[]
   total: number
-  subtotal?: number
-  totalTax?: number
+  subtotal: number
+  totalTax: number
 }
 
 export function CheckoutDialog({
   isOpen,
   onClose,
-  onCheckoutSuccess,
   cartItems,
   total,
-  subtotal = 0,
-  totalTax = 0,
+  subtotal,
+  totalTax,
 }: CheckoutDialogProps) {
-  const { toast } = useToast()
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isSuccess, setIsSuccess] = useState(false)
+  const [placedOrderId, setPlacedOrderId] = useState<number | null>(null)
+  const [placedOrderRef, setPlacedOrderRef] = useState<string | null>(null)
+  const [config, setConfig] = useState<PaymentConfigResponse | null>(null)
+  const [clientSecret, setClientSecret] = useState<string | null>(null)
+  const [stripePromise, setStripePromise] = useState<any>(null)
+
+  const { user, isAuthenticated } = useAuth()
+  const { clearCart } = useCart()
+  const router = useRouter()
 
   const form = useForm<CheckoutFormValues>({
     resolver: zodResolver(checkoutSchema),
     defaultValues: {
-      orderType: 'dine-in',
       name: '',
-      email: '',
-      paymentMethod: 'cash',
-      street2: '',
       phone: '',
+      email: '',
+      street: '',
+      city: '',
+      zip: '',
+      orderType: 'delivery',
+      tableNumber: '',
+      notes: '',
+      paymentMethod: 'demo_online' as PaymentProvider,
     },
   })
 
-  const orderType = form.watch('orderType')
-
-  const onSubmit = async (data: CheckoutFormValues) => {
-    setIsSubmitting(true)
-    try {
-      const orderLines: OrderLineItem[] = cartItems.map((item) => ({
-        product_id: item.product.id,
-        quantity: item.quantity,
-        list_price: item.product.list_price,
-        notes: item.notes,
-      }))
-
-      let customerDetails: CustomerDetails = {
-        name: data.name,
-        email: data.email,
-      }
-
-      if (data.orderType === 'delivery') {
-        customerDetails = {
-          ...customerDetails,
-          street: data.street,
-          street2: data.street2,
-          city: data.city,
-          zip: data.zip,
-          country: data.country,
-          phone: data.phone,
-        }
-      }
-
-      const payload: OrderPayload = {
-        orderLines,
-        customer: customerDetails,
-        paymentMethod: data.paymentMethod,
-        orderType: data.orderType,
-        total,
-      }
-
-      const result = await createOrder(payload)
-
-      if (result.success && result.orderId) {
-        onCheckoutSuccess(result.orderId)
-        form.reset()
-      } else {
-        toast({
-          variant: 'destructive',
-          title: 'Checkout Failed',
-          description: result.message || 'An unknown error occurred.',
-        })
-      }
-    } catch (error) {
-      console.error('Checkout error:', error)
-      toast({
-        variant: 'destructive',
-        title: 'Checkout Failed',
-        description: 'Could not place the order. Please try again later.',
-      })
-    } finally {
-      setIsSubmitting(false)
+  // Prefill user details if authenticated
+  useEffect(() => {
+    if (isAuthenticated && user && isOpen) {
+      form.reset({
+        ...form.getValues(),
+        name: user.name || '',
+        email: user.email || '',
+        phone: user.phone || '',
+        street: user.street || '',
+        city: user.city || '',
+        zip: user.zip || '',
+      });
     }
+  }, [isAuthenticated, user, isOpen, form]);
+
+  // Fetch Payment Configuration on dialog open
+  useEffect(() => {
+    if (isOpen && !config) {
+      fetch('/api/payment/config')
+        .then(res => res.json())
+        .then((data: PaymentConfigResponse) => {
+          if (data && data.provider) {
+            setConfig(data);
+            if (data.provider === 'stripe' && data.public_key) {
+              setStripePromise(loadStripe(data.public_key));
+            }
+          }
+        })
+        .catch(err => console.error("Failed to load payment config", err));
+    }
+  }, [isOpen]);
+
+  // Generate Payment Intent on unmount / config load
+  useEffect(() => {
+    if (isOpen && config?.provider === 'stripe' && !clientSecret && cartItems.length > 0) {
+      fetch('/api/payment/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cart: { items: cartItems, total, subtotal },
+          customer: form.getValues(),
+          orderType: form.getValues('orderType')
+        })
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.clientSecret) {
+            setClientSecret(data.clientSecret);
+          }
+        })
+        .catch(err => console.error("Failed to create payment intent", err));
+    }
+  }, [isOpen, config, cartItems, total, subtotal, form, user]);
+
+  const handleCheckoutSuccess = () => {
+    // In strict webhook architecture, UI success means payment was captured/processed by SDK.
+    // Order creation is handled in the background by webhook.
+    setIsSuccess(true)
+    clearCart()
   }
 
-  if (!isOpen) return null
+  // Poll for the created order once payment is successful
+  useEffect(() => {
+    let pollInterval: NodeJS.Timeout;
+    let attempts = 0;
+    const maxAttempts = 15; // 15 * 3s = 45s max polling
+
+    if (isSuccess && !placedOrderRef) {
+      const email = form.getValues('email');
+
+      const poll = async () => {
+        try {
+          const res = await fetch(`/api/odoo/restaurant/pos-orders?limit=1&email=${encodeURIComponent(email)}`);
+          const result = await res.json();
+
+          if (result.data && result.data.length > 0) {
+            const latestOrder = result.data[0];
+            // If the order is very recent (e.g. within last 2 mins), assume it's ours
+            setPlacedOrderId(latestOrder.id);
+            setPlacedOrderRef(latestOrder.pos_reference);
+            clearInterval(pollInterval);
+          }
+        } catch (err) {
+          console.error("Polling error:", err);
+        }
+
+        attempts++;
+        if (attempts >= maxAttempts) {
+          clearInterval(pollInterval);
+        }
+      };
+
+      pollInterval = setInterval(poll, 3000);
+      poll(); // Initial check
+    }
+
+    return () => {
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, [isSuccess, placedOrderRef, form, user]);
+
+  const handleClose = () => {
+    if (isSuccess) {
+      setIsSuccess(false)
+      setPlacedOrderId(null)
+      setPlacedOrderRef(null)
+    }
+    onClose()
+  }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className='p-0 max-w-md'>
-        <form
-          onSubmit={form.handleSubmit(onSubmit)}
-          className='flex flex-col h-full'
-        >
-          <DialogHeader>
-            <DialogTitle>Checkout</DialogTitle>
-            <DialogDescription>
-              Please provide your details to proceed.
-            </DialogDescription>
-          </DialogHeader>
-
-          {/* Scrollable Content Area */}
-          <div className='overflow-y-auto flex-1 px-6 py-4'>
-            <div className='grid gap-4'>
-              <div className='grid gap-2'>
-                <Label>Order Type</Label>
-                <Controller
-                  control={form.control}
-                  name='orderType'
-                  render={({ field }) => (
-                    <RadioGroup
-                      onValueChange={field.onChange}
-                      defaultValue={field.value}
-                      className='flex gap-4'
-                    >
-                      <div className='flex items-center space-x-2'>
-                        <RadioGroupItem value='dine-in' id='dine-in' />
-                        <Label htmlFor='dine-in'>Dine In</Label>
-                      </div>
-                      <div className='flex items-center space-x-2'>
-                        <RadioGroupItem value='delivery' id='delivery' />
-                        <Label htmlFor='delivery'>Delivery</Label>
-                      </div>
-                    </RadioGroup>
-                  )}
-                />
+    <Dialog open={isOpen} onOpenChange={handleClose}>
+      <DialogContent className={cn('max-w-2xl w-full p-0 overflow-hidden border-none shadow-2xl rounded-[32px]', isSuccess ? 'bg-neutral-900 border border-white/10' : 'bg-white text-neutral-900')}>
+        <DialogTitle className="sr-only">Checkout</DialogTitle>
+        <AnimatePresence mode="wait">
+          {isSuccess ? (
+            <motion.div
+              key="success"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="flex flex-col items-center justify-center p-12 text-center space-y-8"
+            >
+              <div className="w-24 h-24 rounded-full bg-accent-gold/10 flex items-center justify-center text-accent-gold shadow-inner border border-accent-gold/20">
+                <CheckCircle2 size={48} className="animate-bounce" />
               </div>
-
-              <Separator />
-
-              <div className='grid gap-2'>
-                <Label htmlFor='name'>Full Name</Label>
-                <Input id='name' {...form.register('name')} />
-                {form.formState.errors.name && (
-                  <p className='text-sm text-destructive'>
-                    {form.formState.errors.name.message}
-                  </p>
-                )}
-              </div>
-
-              <div className='grid gap-2'>
-                <Label htmlFor='email'>Email Address</Label>
-                <Input id='email' type='email' {...form.register('email')} />
-                {form.formState.errors.email && (
-                  <p className='text-sm text-destructive'>
-                    {form.formState.errors.email.message}
-                  </p>
-                )}
-              </div>
-
-              {orderType === 'delivery' && (
-                <>
-                  <div className='grid gap-2'>
-                    <Label htmlFor='street'>Street Address</Label>
-                    <Input id='street' {...form.register('street')} />
-                    {form.formState.errors.street && (
-                      <p className='text-sm text-destructive'>
-                        {form.formState.errors.street.message}
-                      </p>
-                    )}
-                  </div>
-                  <div className='grid gap-2'>
-                    <Label htmlFor='street2'>Address Line 2</Label>
-                    <Input id='street2' {...form.register('street2')} />
-                  </div>
-                  <div className='grid gap-2'>
-                    <Label htmlFor='city'>City</Label>
-                    <Input id='city' {...form.register('city')} />
-                    {form.formState.errors.city && (
-                      <p className='text-sm text-destructive'>
-                        {form.formState.errors.city.message}
-                      </p>
-                    )}
-                  </div>
-                  <div className='grid gap-2'>
-                    <Label htmlFor='zip'>ZIP Code</Label>
-                    <Input id='zip' {...form.register('zip')} />
-                    {form.formState.errors.zip && (
-                      <p className='text-sm text-destructive'>
-                        {form.formState.errors.zip.message}
-                      </p>
-                    )}
-                  </div>
-                  <div className='grid gap-2'>
-                    <Label htmlFor='country'>Country</Label>
-                    <Input id='country' {...form.register('country')} />
-                    {form.formState.errors.country && (
-                      <p className='text-sm text-destructive'>
-                        {form.formState.errors.country.message}
-                      </p>
-                    )}
-                  </div>
-                  <div className='grid gap-2'>
-                    <Label htmlFor='phone'>Phone</Label>
-                    <Input id='phone' {...form.register('phone')} />
-                  </div>
-                </>
-              )}
-
-              <Separator />
-
-              <div className='grid gap-2'>
-                <Label>Payment Method</Label>
-                <Controller
-                  control={form.control}
-                  name='paymentMethod'
-                  render={({ field }) => (
-                    <RadioGroup
-                      onValueChange={field.onChange}
-                      defaultValue={field.value}
-                      className='mt-2 space-y-2'
-                    >
-                      <div className='flex items-center space-x-2'>
-                        <RadioGroupItem value='cash' id='cash' />
-                        <Label htmlFor='cash'>Cash (Demo)</Label>
-                      </div>
-                      <div className='flex items-center space-x-2'>
-                        <RadioGroupItem value='online_demo' id='online_demo' />
-                        <Label htmlFor='online_demo'>Online (Demo)</Label>
-                      </div>
-                    </RadioGroup>
-                  )}
-                />
-                {form.formState.errors.paymentMethod && (
-                  <p className='text-sm text-destructive'>
-                    {form.formState.errors.paymentMethod.message}
-                  </p>
-                )}
-              </div>
-
-              <Separator />
-
-              {/* Order Summary */}
-              <div className='space-y-2 bg-muted p-3 rounded'>
-                <h3 className='font-semibold text-sm'>Order Summary</h3>
-                <div className='flex justify-between text-sm'>
-                  <span className='text-muted-foreground'>Subtotal</span>
-                  <span>{formatCurrency(subtotal)}</span>
-                </div>
-                {totalTax > 0 && (
-                  <div className='flex justify-between text-sm'>
-                    <span className='text-muted-foreground'>Tax</span>
-                    <span>{formatCurrency(totalTax)}</span>
-                  </div>
-                )}
-                <Separator />
-                <div className='flex justify-between font-bold text-base'>
-                  <span>Total</span>
-                  <span>{formatCurrency(total)}</span>
+              <div className="space-y-2">
+                <h2 className="text-3xl font-serif font-bold text-white">Order Successful!</h2>
+                <p className="text-white/70 max-w-sm">Thank you for your order. We've received it and are preparing your culinary experience.</p>
+                <div className="flex flex-col items-center gap-2 mt-4">
+                  <Badge variant="secondary" className="bg-white/10 text-accent-gold border border-white/20 px-4 py-1 rounded-full uppercase text-xs tracking-widest font-bold">
+                    Receipt: {placedOrderRef || placedOrderId || 'Pending'}
+                  </Badge>
                 </div>
               </div>
-            </div>
-          </div>
 
-          <DialogFooter>
-            <Button
-              type='button'
-              variant='ghost'
-              onClick={onClose}
-              disabled={isSubmitting}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-md pt-4">
+                <Button variant="outline" className="h-14 rounded-2xl border-white/20 bg-transparent text-white font-bold hover:bg-white/10" onClick={() => { handleClose(); router.push(`/track/${placedOrderRef || placedOrderId}`); }}>
+                  Track Order
+                </Button>
+                <Button variant="outline" className="h-14 rounded-2xl border-white/20 bg-transparent text-white font-bold hover:bg-white/10" onClick={() => { handleClose(); router.push('/profile'); }}>
+                  View Profile
+                </Button>
+                <Button className="h-14 sm:col-span-2 rounded-2xl bg-accent-gold hover:bg-accent-gold/90 text-primary font-bold text-lg shadow-lg shadow-accent-gold/20" onClick={handleClose}>
+                  Continue Shopping
+                </Button>
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="form"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="w-full relative"
             >
-              Cancel
-            </Button>
-            <Button
-              type='submit'
-              disabled={isSubmitting || cartItems.length === 0}
-              className='bg-green-600 hover:bg-green-700 text-white'
-            >
-              {isSubmitting && (
-                <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-              )}
-              Place Order ({formatCurrency(total)})
-            </Button>
-          </DialogFooter>
-        </form>
+              <FormProvider {...form}>
+                {!config ? (
+                  <div className="flex flex-col items-center justify-center h-[50vh] space-y-4">
+                    <Loader2 className="w-8 h-8 animate-spin text-accent-gold" />
+                    <p className="text-neutral-500 font-medium">Securing checkout...</p>
+                  </div>
+                ) : config.provider === 'stripe' ? (
+                  clientSecret && stripePromise ? (
+                    <Elements stripe={stripePromise} options={{ clientSecret }}>
+                      <CheckoutFormInner
+                        cartItems={cartItems}
+                        total={total}
+                        subtotal={subtotal}
+                        totalTax={totalTax}
+                        provider={config.provider}
+                        onCancel={handleClose}
+                        onSuccess={handleCheckoutSuccess}
+                      />
+                    </Elements>
+                  ) : (
+                    <div className="flex items-center justify-center p-24">
+                      <Loader2 className="h-8 w-8 animate-spin text-accent-gold" />
+                    </div>
+                  )
+                ) : (
+                  <CheckoutFormInner
+                    cartItems={cartItems}
+                    total={total}
+                    subtotal={subtotal}
+                    totalTax={totalTax}
+                    provider={config.provider}
+                    onCancel={handleClose}
+                    onSuccess={handleCheckoutSuccess}
+                  />
+                )}
+              </FormProvider>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </DialogContent>
     </Dialog>
   )

@@ -13,11 +13,12 @@ async function getCustomers(searchParams: URLSearchParams): Promise<Paginated<Od
     const res = await fetch(url.toString(), { cache: 'no-store' });
     if (!res.ok) {
       const contentType = res.headers.get("content-type");
-      let errorBody: any;
+      let errorBody: Record<string, unknown> | null = null;
       let errorMessage: string;
       if (contentType && contentType.includes("application/json")) {
-        errorBody = await res.json();
-        errorMessage = errorBody.message || 'An unknown API error occurred';
+        const body = await res.json() as Record<string, unknown>;
+        errorBody = body;
+        errorMessage = (body.message as string) || 'An unknown API error occurred';
       } else {
         errorMessage = await res.text();
       }
@@ -45,7 +46,7 @@ export default async function RestaurantCustomersPage({
         <AlertTitle>Error Fetching Customers</AlertTitle>
         <AlertDescription>
           <p>{customersData.error.message}</p>
-          {customersData.error.odooError && <pre className="mt-2 w-full whitespace-pre-wrap rounded-md bg-destructive/20 p-2 text-xs">{JSON.stringify(customersData.error.odooError, null, 2)}</pre>}
+          {!!customersData.error.odooError && <pre className="mt-2 w-full whitespace-pre-wrap rounded-md bg-destructive/20 p-2 text-xs">{JSON.stringify(customersData.error.odooError, null, 2)}</pre>}
         </AlertDescription>
       </Alert>
     );

@@ -13,11 +13,12 @@ async function getFloors(searchParams: URLSearchParams): Promise<Paginated<OdooR
     const res = await fetch(url.toString(), { cache: 'no-store' });
     if (!res.ok) {
       const contentType = res.headers.get("content-type");
-      let errorBody: any;
+      let errorBody: Record<string, unknown> | null = null;
       let errorMessage: string;
       if (contentType && contentType.includes("application/json")) {
-        errorBody = await res.json();
-        errorMessage = errorBody.message || 'An unknown API error occurred';
+        const body = await res.json() as Record<string, unknown>;
+        errorBody = body;
+        errorMessage = (body.message as string) || 'An unknown API error occurred';
       } else {
         errorMessage = await res.text();
       }
@@ -45,7 +46,7 @@ export default async function RestaurantFloorsPage({
         <AlertTitle>Error Fetching Floors</AlertTitle>
         <AlertDescription>
           <p>{floorsData.error.message}</p>
-          {floorsData.error.odooError && <pre className="mt-2 w-full whitespace-pre-wrap rounded-md bg-destructive/20 p-2 text-xs">{JSON.stringify(floorsData.error.odooError, null, 2)}</pre>}
+          {!!floorsData.error.odooError && <pre className="mt-2 w-full whitespace-pre-wrap rounded-md bg-destructive/20 p-2 text-xs">{JSON.stringify(floorsData.error.odooError, null, 2)}</pre>}
         </AlertDescription>
       </Alert>
     );

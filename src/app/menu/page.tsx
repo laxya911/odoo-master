@@ -1,22 +1,23 @@
 import { Suspense } from 'react';
-import type { Paginated, OdooRecord, OdooError, Product } from '@/lib/types';
+import type { Paginated, OdooError, OdooRecord } from '@/lib/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertTriangle } from 'lucide-react';
-import { MenuList } from '@/components/menu/MenuList';
 import MenuLoading from './loading';
+import { Menu } from '@/sections/Menu';
 
 async function getProducts(): Promise<Paginated<OdooRecord> | { error: OdooError }> {
   const url = new URL(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/odoo/restaurant/products`);
-  
+
   try {
     const res = await fetch(url.toString(), { cache: 'no-store' });
     if (!res.ok) {
       const contentType = res.headers.get("content-type");
-      let errorBody: any;
+      let errorBody: Record<string, unknown> | null = null;
       let errorMessage: string;
       if (contentType && contentType.includes("application/json")) {
-        errorBody = await res.json();
-        errorMessage = errorBody.message || 'An unknown API error occurred';
+        const body = await res.json() as Record<string, unknown>;
+        errorBody = body;
+        errorMessage = (body.message as string) || 'An unknown API error occurred';
       } else {
         errorMessage = await res.text();
       }
@@ -41,7 +42,7 @@ export default async function MenuPage() {
           <AlertTitle>Error Fetching Products</AlertTitle>
           <AlertDescription>
             <p>{productsData.error.message}</p>
-            {productsData.error.odooError && <pre className="mt-2 w-full whitespace-pre-wrap rounded-md bg-destructive/20 p-2 text-xs">{JSON.stringify(productsData.error.odooError, null, 2)}</pre>}
+            {!!productsData.error.odooError && <pre className="mt-2 w-full whitespace-pre-wrap rounded-md bg-destructive/20 p-2 text-xs">{JSON.stringify(productsData.error.odooError, null, 2)}</pre>}
           </AlertDescription>
         </Alert>
       </div>
@@ -50,7 +51,9 @@ export default async function MenuPage() {
 
   return (
     <Suspense fallback={<MenuLoading />}>
-      <MenuList initialProducts={productsData.data as Product[]} />
+      <main role="main" className=' mx-auto bg-neutral-950'>
+        <Menu />
+      </main>
     </Suspense>
   );
 }

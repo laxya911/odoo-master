@@ -1,0 +1,180 @@
+import { odooCall } from './odoo-client';
+import { calculateOrderTotal } from './odoo-order-utils';
+import type { OrderPayload, OdooRecord } from './types';
+
+/**
+ * Handles the actual creation and fulfillment of a POS order in Odoo.
+ * This should be called primarily from a secure backend context (like a Stripe Webhook).
+ */
+export async function fulfillOdooOrder(payload: OrderPayload, stripePaymentIntentId?: string) {
+  console.log('--- Fulfilling Odoo POS Order ---');
+  console.log('Payload:', JSON.stringify(payload, null, 2));
+  
+  const { orderLines: cartItems, customer, paymentMethod, notes } = payload;
+
+  // 1. Find an active POS session
+  console.log('[Fulfillment] Searching for active POS session...');
+  const activeSessions = await odooCall<OdooRecord[]>('pos.session', 'search_read', {
+    domain: [['state', '=', 'opened']],
+    fields: ['id', 'config_id'],
+    limit: 1,
+  });
+
+  if (!activeSessions || activeSessions.length === 0) {
+    console.error('[Fulfillment] No active POS session found!');
+    throw new Error('No active POS session found. Restaurant might be closed.');
+  }
+
+  const session = activeSessions[0];
+  const sessionId = session.id as number;
+  const configId = (session.config_id as [number, string])[0];
+  console.log(`[Fulfillment] Using Session ID: ${sessionId}, Config ID: ${configId}`);
+
+  // 2. Map Payment Method (Map to 'Card' for online payments to avoid 422 errors)
+  let targetMethodName = 'Card';
+  if (paymentMethod === 'cash') targetMethodName = 'Cash';
+
+  console.log(`[Fulfillment] Mapping payment method for name: ${targetMethodName}`);
+  const posConfig = await odooCall<OdooRecord[]>('pos.config', 'read', {
+    ids: [configId],
+    fields: ['payment_method_ids'],
+  });
+
+  const paymentMethodIds = posConfig[0].payment_method_ids as number[];
+  const paymentMethods = await odooCall<OdooRecord[]>('pos.payment.method', 'search_read', {
+    domain: [
+      ['id', 'in', paymentMethodIds],
+      ['name', 'ilike', targetMethodName],
+      ['is_online_payment', '=', false]
+    ],
+    fields: ['id', 'name'],
+    limit: 1,
+  });
+
+  if (!paymentMethods || paymentMethods.length === 0) {
+    console.warn(`[Fulfillment] Method "${targetMethodName}" not found, trying fallback...`);
+    // Fallback to first non-cash, non-online method
+    const fallback = await odooCall<OdooRecord[]>('pos.payment.method', 'search_read', {
+      domain: [
+        ['id', 'in', paymentMethodIds],
+        ['is_cash_count', '=', false],
+        ['is_online_payment', '=', false]
+      ],
+      fields: ['id', 'name'],
+      limit: 1,
+    });
+    if (!fallback.length) {
+      console.error('[Fulfillment] No suitable POS payment method found even after fallback.');
+      throw new Error('No suitable POS payment method found.');
+    }
+    paymentMethods.push(fallback[0]);
+  }
+
+  const paymentMethodId = paymentMethods[0].id as number;
+  console.log(`[Fulfillment] Selected Payment Method: ${paymentMethods[0].name} (ID: ${paymentMethodId})`);
+
+  // 3. Find or Create Partner
+  console.log(`[Fulfillment] Handling partner for email: ${customer.email}`);
+  let partnerId: number;
+  const existingPartners = await odooCall<OdooRecord[]>('res.partner', 'search_read', {
+    domain: [['email', '=', customer.email]],
+    fields: ['id'],
+    limit: 1,
+  });
+
+  if (existingPartners.length > 0) {
+    partnerId = existingPartners[0].id as number;
+    console.log(`[Fulfillment] Existing partner found: ${partnerId}`);
+  } else {
+    console.log('[Fulfillment] Creating new partner...');
+    const newPartnerIds = await odooCall<number[]>('res.partner', 'create', {
+      vals_list: [{
+        name: customer.name,
+        email: customer.email,
+        phone: customer.phone,
+        street: customer.street,
+        city: customer.city,
+        zip: customer.zip,
+        country_id: 236 // Assuming India
+      }]
+    });
+    partnerId = newPartnerIds[0];
+    console.log(`[Fulfillment] New partner created: ${partnerId}`);
+  }
+
+  // 4. Calculate Totals
+  console.log('[Fulfillment] Calculating server-side totals...');
+  const orderBreakdown = await calculateOrderTotal(cartItems);
+  console.log('[Fulfillment] Totals:', { total: orderBreakdown.amount_total, tax: orderBreakdown.amount_tax });
+
+  const orderData = {
+    name: `Online Order - ${stripePaymentIntentId ? stripePaymentIntentId.slice(-6) : 'WEB'}`,
+    session_id: sessionId,
+    partner_id: partnerId,
+    lines: orderBreakdown.lines.map(line => [0, 0, {
+      ...line,
+      tax_ids: line.tax_ids.length > 0 ? [[6, 0, line.tax_ids]] : [],
+      customer_note: line.customer_note || ''
+    }]),
+    to_invoice: true,
+    amount_tax: orderBreakdown.amount_tax,
+    amount_total: orderBreakdown.amount_total,
+    amount_paid: 0,
+    amount_return: 0,
+    general_customer_note: notes || '',
+    note: `Stripe Payment ID: ${stripePaymentIntentId || 'N/A'}`
+  };
+
+  // 5. Create POS Order
+  console.log('[Fulfillment] Creating POS Order...');
+  const orderIds = await odooCall<number[]>('pos.order', 'create', { vals_list: [orderData] });
+  const orderId = orderIds[0];
+  console.log(`[Fulfillment] POS Order created with ID: ${orderId}`);
+
+  // 6. Add Payment
+  console.log(`[Fulfillment] Adding payment of ${orderBreakdown.amount_total} to order...`);
+  await odooCall('pos.order', 'add_payment', {
+    ids: [orderId],
+    data: {
+      pos_order_id: orderId,
+      amount: orderBreakdown.amount_total,
+      payment_method_id: paymentMethodId,
+    },
+  });
+  console.log('[Fulfillment] Payment added.');
+
+  // 7. Validate & Invoice
+  console.log('[Fulfillment] Moving order to paid state...');
+  await odooCall('pos.order', 'action_pos_order_paid', { ids: [orderId] });
+  
+  try {
+    console.log('[Fulfillment] Generating invoice...');
+    // Generate invoice - this moves the order towards Invoiced/Done state
+    await odooCall('pos.order', 'action_pos_order_invoice', { ids: [orderId] });
+    console.log('[Fulfillment] Invoice generated successfully.');
+  } catch (e) {
+    console.warn('[Fulfillment] Invoice generation failed, attempting manual state move:', e);
+    // Fallback: manually move to 'done' state if invoicing fails (optional safeguard)
+    try {
+        await odooCall('pos.order', 'write', {
+            ids: [orderId],
+            vals: { state: 'done' }
+        });
+    } catch (writeErr) {
+        console.error('[Fulfillment] Final state move failed:', writeErr);
+    }
+  }
+
+  // 8. Fetch Reference
+  const final = await odooCall<Array<{ pos_reference: string; state: string }>>('pos.order', 'read', {
+    ids: [orderId],
+    fields: ['pos_reference', 'state']
+  });
+
+  console.log(`--- Order #${orderId} fulfilled successfully with state: ${final[0]?.state} ---`);
+
+  return {
+    orderId,
+    posReference: final[0]?.pos_reference || `Order #${orderId}`
+  };
+}

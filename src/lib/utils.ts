@@ -13,3 +13,12 @@ export function formatCurrency(value: number): string {
     maximumFractionDigits: 2,
   }).format(value)
 }
+
+export function generateSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/ /g, '-')
+    .replace(/[^\w-]+/g, '')
+    .replace(/--+/g, '-')
+    .trim()
+}

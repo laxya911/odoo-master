@@ -1,8 +1,8 @@
 export class OdooClientError extends Error {
   status: number;
-  odooError?: any;
+  odooError?: unknown;
 
-  constructor(message: string, status: number, odooError?: any) {
+  constructor(message: string, status: number, odooError?: unknown) {
     super(message);
     this.name = 'OdooClientError';
     this.status = status;
@@ -13,7 +13,8 @@ export class OdooClientError extends Error {
 export async function odooCall<T>(
   model: string,
   method: string,
-  payload: Record<string, any> = {}
+  payload: Record<string, any> = {},
+  options: RequestInit = {}
 ): Promise<T> {
   const baseUrl = process.env.ODOO_BASE_URL || 'https://demo.primetek.in';
   const apiKey = process.env.ODOO_API_KEY;
@@ -33,7 +34,7 @@ export async function odooCall<T>(
   };
   
   const bodyPayload = {
-    context: { lang: 'en_US', ...(payload.context || {}) },
+    context: { lang: 'en_US', ...(payload.context as Record<string, unknown> || {}) },
     ...payload,
   };
 
@@ -42,13 +43,14 @@ export async function odooCall<T>(
   try {
     const response = await fetch(url, {
       method: 'POST',
-      headers,
+      headers: { ...headers, ...(options.headers as Record<string, string> || {}) },
       body,
       cache: 'no-store',
+      ...options,
     });
 
     if (!response.ok) {
-      let errorData: any = null;
+      let errorData: { message?: string; name?: string } | null = null;
       try {
         errorData = await response.json();
       } catch {

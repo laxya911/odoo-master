@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RAM & CO. - Party Course Menu</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 0;
+    }
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Georgia', serif;
+      background: #0A0A0A;
+      color: #FFFFFF;
+      padding: 60px;
+      line-height: 1.6;
+    }
+    
+    .header {
+      text-align: center;
+      margin-bottom: 50px;
+      border-bottom: 2px solid #C5A059;
+      padding-bottom: 30px;
+    }
+    
+    .logo {
+      font-size: 48px;
+      font-weight: bold;
+      letter-spacing: 8px;
+      color: #FFFFFF;
+      margin-bottom: 10px;
+    }
+    
+    .logo .ampersand {
+      color: #C5A059;
+    }
+    
+    .subtitle {
+      font-size: 12px;
+      letter-spacing: 4px;
+      color: #C5A059;
+      text-transform: uppercase;
+      margin-bottom: 30px;
+    }
+    
+    .title {
+      font-size: 32px;
+      color: #C5A059;
+      letter-spacing: 3px;
+      margin-top: 20px;
+    }
+    
+    .course {
+      margin-bottom: 40px;
+      padding: 30px;
+      border: 1px solid rgba(197, 160, 89, 0.2);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.02);
+    }
+    
+    .course-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-bottom: 15px;
+      border-bottom: 1px solid rgba(197, 160, 89, 0.3);
+    }
+    
+    .course-name {
+      font-size: 24px;
+      font-weight: bold;
+      color: #C5A059;
+      letter-spacing: 2px;
+    }
+    
+    .course-price {
+      font-size: 28px;
+      font-weight: bold;
+      color: #FFFFFF;
+    }
+    
+    .course-description {
+      font-style: italic;
+      color: rgba(255, 255, 255, 0.6);
+      margin-bottom: 15px;
+    }
+    
+    .dishes {
+      list-style: none;
+      padding-left: 0;
+    }
+    
+    .dishes li {
+      padding: 8px 0;
+      padding-left: 25px;
+      position: relative;
+      color: rgba(255, 255, 255, 0.8);
+    }
+    
+    .dishes li:before {
+      content: "•";
+      position: absolute;
+      left: 0;
+      color: #C5A059;
+      font-size: 20px;
+    }
+    
+    .footer {
+      margin-top: 50px;
+      padding-top: 30px;
+      border-top: 2px solid #C5A059;
+      text-align: center;
+    }
+    
+    .footer-info {
+      color: rgba(255, 255, 255, 0.6);
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+    
+    .footer-locations {
+      color: #C5A059;
+      font-size: 12px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin-top: 15px;
+    }
+    
+    .highlight {
+      color: #C5A059;
+      font-weight: bold;
+    }
+    
+    @media print {
+      body {
+        background: #0A0A0A;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">RAM <span class="ampersand">&</span> CO.</div>
+    <div class="subtitle">Indian & Nepalese Dining</div>
+    <div class="title">PARTY COURSE MENU</div>
+  </div>
+
+  <div class="course">
+    <div class="course-header">
+      <div class="course-name">BRONZE COURSE</div>
+      <div class="course-price">¥2,000<span style="font-size: 14px; color: rgba(255,255,255,0.6);">/person</span></div>
+    </div>
+    <div class="course-description">All-you-can-eat buffet style • Perfect for casual gatherings</div>
+    <ul class="dishes">
+      <li>Butter Chicken Curry</li>
+      <li>Dal Makhani (Black Lentils)</li>
+      <li>Vegetable Samosas</li>
+      <li>Tandoori Chicken</li>
+      <li>Naan Bread <span class="highlight">(unlimited)</span></li>
+      <li>Basmati Rice</li>
+      <li>Mixed Salad</li>
+      <li>Mango Lassi</li>
+    </ul>
+  </div>
+
+  <div class="course">
+    <div class="course-header">
+      <div class="course-name">SILVER COURSE</div>
+      <div class="course-price">¥3,000<span style="font-size: 14px; color: rgba(255,255,255,0.6);">/person</span></div>
+    </div>
+    <div class="course-description">Enhanced selection • Everything in Bronze, plus:</div>
+    <ul class="dishes">
+      <li>Lamb Rogan Josh</li>
+      <li>Paneer Tikka Masala</li>
+      <li>Chicken Biryani</li>
+      <li>Garlic Naan</li>
+      <li>Raita (Yogurt Sauce)</li>
+      <li>Gulab Jamun (Dessert)</li>
+    </ul>
+  </div>
+
+  <div class="course">
+    <div class="course-header">
+      <div class="course-name">GOLD COURSE</div>
+      <div class="course-price">¥4,500<span style="font-size: 14px; color: rgba(255,255,255,0.6);">/person</span></div>
+    </div>
+    <div class="course-description">Premium all-you-can-eat experience • Everything in Silver, plus:</div>
+    <ul class="dishes">
+      <li>Tandoori Mixed Grill</li>
+      <li>Prawn Curry</li>
+      <li>Himalayan Momos</li>
+      <li>Chef's Special Curry</li>
+      <li>Premium Dessert Platter</li>
+      <li>Complimentary Welcome Drink <span class="highlight">✨</span></li>
+    </ul>
+  </div>
+
+  <div class="footer">
+    <div class="footer-info">
+      <strong>Minimum 4 persons</strong> • Advance booking required<br>
+      Available at all 4 locations
+    </div>
+    <div class="footer-locations">Mito • Hitachinaka • Since 1999</div>
+    <div style="margin-top: 20px; color: rgba(255,255,255,0.4); font-size: 12px;">
+      For reservations: Visit our booking page or contact your nearest RAM & CO. location
+    </div>
+  </div>
+</body>
+</html>

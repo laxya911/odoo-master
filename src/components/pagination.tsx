@@ -1,100 +1,68 @@
-"use client"
+"use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination"
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
-type PaginationControlsProps = {
-  total: number
-  limit: number
-  offset: number
+interface PaginationProps {
+    total: number;
+    limit: number;
+    offset: number;
+    [key: string]: any;
 }
 
-export function PaginationControls({ total, limit, offset }: PaginationControlsProps) {
-  const router = useRouter()
-  const pathname = usePathname()
-  const searchParams = useSearchParams()
-  const currentPage = Math.floor(offset / limit) + 1
-  const totalPages = Math.ceil(total / limit)
+export function PaginationControls({ total, limit, offset }: PaginationProps) {
+    const router = useRouter();
+    const pathname = usePathname();
+    const searchParams = useSearchParams();
 
-  const handlePageChange = (page: number) => {
-    const newOffset = (page - 1) * limit
-    const params = new URLSearchParams(searchParams)
-    params.set("offset", newOffset.toString())
-    router.push(`${pathname}?${params.toString()}`)
-  }
+    const currentPage = Math.floor(offset / limit) + 1;
+    const totalPages = Math.ceil(total / limit);
 
-  if (totalPages <= 1) return null
+    const createPageUrl = (newOffset: number) => {
+        const params = new URLSearchParams(searchParams);
+        params.set("offset", newOffset.toString());
+        return `${pathname}?${params.toString()}`;
+    };
 
-  const getPageNumbers = () => {
-    const pages = []
-    if (totalPages <= 5) {
-      for (let i = 1; i <= totalPages; i++) {
-        pages.push(i)
-      }
-    } else {
-      if (currentPage <= 3) {
-        pages.push(1, 2, 3, 4, -1, totalPages)
-      } else if (currentPage >= totalPages - 2) {
-        pages.push(1, -1, totalPages - 3, totalPages - 2, totalPages - 1, totalPages)
-      } else {
-        pages.push(1, -1, currentPage - 1, currentPage, currentPage + 1, -1, totalPages)
-      }
-    }
-    return pages
-  }
+    const handlePageChange = (newOffset: number) => {
+        router.push(createPageUrl(newOffset));
+    };
 
-  return (
-    <Pagination>
-      <PaginationContent>
-        <PaginationItem>
-          <PaginationPrevious
-            href="#"
-            onClick={(e) => {
-              e.preventDefault()
-              if (currentPage > 1) handlePageChange(currentPage - 1)
-            }}
-            className={currentPage === 1 ? "pointer-events-none opacity-50" : undefined}
-          />
-        </PaginationItem>
-        {getPageNumbers().map((page, index) =>
-          page === -1 ? (
-            <PaginationItem key={`ellipsis-${index}`}>
-              <PaginationEllipsis />
-            </PaginationItem>
-          ) : (
-            <PaginationItem key={page}>
-              <PaginationLink
-                href="#"
-                onClick={(e) => {
-                  e.preventDefault()
-                  handlePageChange(page)
-                }}
-                isActive={currentPage === page}
-              >
-                {page}
-              </PaginationLink>
-            </PaginationItem>
-          )
-        )}
-        <PaginationItem>
-          <PaginationNext
-            href="#"
-            onClick={(e) => {
-              e.preventDefault()
-              if (currentPage < totalPages) handlePageChange(currentPage + 1)
-            }}
-            className={currentPage === totalPages ? "pointer-events-none opacity-50" : undefined}
-          />
-        </PaginationItem>
-      </PaginationContent>
-    </Pagination>
-  )
+    if (totalPages <= 1) return null;
+
+    return (
+        <div className="flex items-center justify-between px-2">
+            <div className="text-sm text-muted-foreground">
+                Showing <span className="font-medium text-foreground">{offset + 1}</span> to{" "}
+                <span className="font-medium text-foreground">
+                    {Math.min(offset + limit, total)}
+                </span>{" "}
+                of <span className="font-medium text-foreground">{total}</span> results
+            </div>
+            <div className="flex items-center space-x-2">
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(Math.max(0, offset - limit))}
+                    disabled={offset === 0}
+                >
+                    <ChevronLeft className="h-4 w-4 mr-2" />
+                    Previous
+                </Button>
+                <div className="flex items-center justify-center text-sm font-medium">
+                    Page {currentPage} of {totalPages}
+                </div>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(offset + limit)}
+                    disabled={offset + limit >= total}
+                >
+                    Next
+                    <ChevronRight className="h-4 w-4 ml-2" />
+                </Button>
+            </div>
+        </div>
+    );
 }

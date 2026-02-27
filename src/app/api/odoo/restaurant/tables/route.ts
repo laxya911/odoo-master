@@ -4,6 +4,8 @@ import type { OdooRecord } from '@/lib/types';
 
 const ODOO_MODEL = "restaurant.table";
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -11,12 +13,12 @@ export async function GET(request: NextRequest) {
     const offset = parseInt(searchParams.get('offset') || '0', 10);
     const floorId = searchParams.get('floor_id');
 
-    const domain: any[] = [];
+    const domain: unknown[] = [];
     if (floorId) {
         domain.push(['floor_id', '=', Number(floorId)]);
     }
 
-    const fieldsDef = await odooCall<Record<string, any>>(ODOO_MODEL, 'fields_get', {});
+    const fieldsDef = await odooCall<Record<string, unknown>>(ODOO_MODEL, 'fields_get', {});
     const fieldNames = Object.keys(fieldsDef);
     
     const total = await odooCall<number>(ODOO_MODEL, 'search_count', { domain });

@@ -1,7 +1,5 @@
 "use client";
 
-import { useTransition } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Table,
   TableBody,
@@ -25,7 +23,7 @@ type FloorsClientProps = {
   initialData: Paginated<OdooRecord>;
 };
 
-const renderCellContent = (value: any) => {
+const renderCellContent = (value: unknown) => {
   if (value === false || value === null || value === undefined) {
     return <span className="text-muted-foreground">N/A</span>;
   }

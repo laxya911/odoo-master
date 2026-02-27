@@ -27,7 +27,7 @@ type ProductsClientProps = {
   initialData: Paginated<OdooRecord>;
 };
 
-const renderCellContent = (value: any) => {
+const renderCellContent = (value: unknown) => {
   if (value === false || value === null || value === undefined) {
     return <span className="text-muted-foreground">N/A</span>;
   }
@@ -50,7 +50,7 @@ export function ProductsClient({ initialData }: ProductsClientProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
 
   const handleSearch = useDebouncedCallback((term: string) => {
     const params = new URLSearchParams(searchParams);

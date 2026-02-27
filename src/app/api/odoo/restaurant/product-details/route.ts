@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { odooCall, OdooClientError } from '@/lib/odoo-client'
 
+export const dynamic = 'force-dynamic'
+
 export interface AttributeValue {
   id: number
   name: string
@@ -9,16 +11,20 @@ export interface AttributeValue {
 
 export interface AttributeLine {
   id: number
+  name: string
   attribute?: { id: number; name: string } | null
+  display_type?: string
   values: AttributeValue[]
 }
 
 export interface ComboLine {
   id: number
+  name?: string
   combo_category_id?: [number, string] | string | null
   max_item?: number
   included_item?: number
   required?: boolean
+  product_ids: number[]
   products?: Array<{ id: number; name: string; list_price: number }>
 }
 
@@ -56,7 +62,6 @@ export async function GET(request: NextRequest) {
           'list_price',
           'image_256',
           'product_tmpl_id',
-          'attribute_line_ids',
           'taxes_id',
         ],
       },
@@ -75,157 +80,172 @@ export async function GET(request: NextRequest) {
     )?.[0]
 
     const attributeLines: AttributeLine[] = []
-    if (
-      tmplId &&
-      Array.isArray(product.attribute_line_ids) &&
-      product.attribute_line_ids?.length > 0
-    ) {
-      const lines = await odooCall<Record<string, unknown>[]>(
-        'product.template.attribute.line',
-        'search_read',
-        {
-          domain: [['product_tmpl_id', '=', tmplId]],
-          fields: ['id', 'attribute_id', 'value_ids'],
-        },
-      )
-
-      for (const line of lines as Record<string, unknown>[]) {
-        const attrId = (line.attribute_id as [number, string] | undefined)?.[0]
-        const attr = attrId
-          ? await odooCall<Record<string, unknown>[]>(
-              'product.attribute',
-              'read',
-              {
-                ids: [attrId],
-                fields: ['id', 'name'],
-              },
-            )
-          : []
-
-        const valueIds = (line.value_ids as number[] | undefined) || []
-        const values: AttributeValue[] =
-          valueIds.length > 0
-            ? await odooCall<AttributeValue[]>(
-                'product.attribute.value',
-                'read',
-                {
-                  ids: valueIds,
-                  fields: ['id', 'name'],
-                },
-              )
-            : []
-
-        const attrData = attr[0] as Record<string, unknown> | undefined
-        attributeLines.push({
-          id: (line.id as number) || 0,
-          attribute: attrData
-            ? {
-                id: (attrData.id as number) || 0,
-                name: (attrData.name as string) || '',
-              }
-            : null,
-          values,
-        })
-      }
-    }
-
     const comboLines: ComboLine[] = []
+
     if (tmplId) {
+      // 1. Fetch Template data
       const templates = await odooCall<Record<string, unknown>[]>(
         'product.template',
         'read',
         {
           ids: [tmplId],
-          fields: ['combo_ids'],
+          fields: ['attribute_line_ids', 'combo_ids'],
         },
       )
+      
+      const tmplData = templates[0] || {}
+      const tmplAttributeLineIds = (tmplData.attribute_line_ids as number[] | undefined) || []
+      const comboIds = (tmplData.combo_ids as number[] | undefined) || []
 
-      const comboIds = (templates[0]?.combo_ids as number[] | undefined) || []
+      // 2. Process Attribute Lines
+      if (tmplAttributeLineIds.length > 0) {
+        const lines = await odooCall<Record<string, unknown>[]>(
+          'product.template.attribute.line',
+          'read',
+          {
+            ids: tmplAttributeLineIds,
+            fields: ['id', 'attribute_id', 'value_ids'],
+          },
+        )
 
-      if (Array.isArray(comboIds) && comboIds.length > 0) {
+        for (const line of lines as Record<string, unknown>[]) {
+          const attrId = (line.attribute_id as [number, string] | undefined)?.[0]
+          const attr = attrId
+            ? await odooCall<Record<string, unknown>[]>(
+                'product.attribute',
+                'read',
+                {
+                  ids: [attrId],
+                  fields: ['id', 'name', 'display_type'],
+                },
+              )
+            : []
+
+          const valueIds = (line.value_ids as number[] | undefined) || []
+          const values: AttributeValue[] =
+            valueIds.length > 0
+              ? await odooCall<AttributeValue[]>(
+                  'product.attribute.value',
+                  'read',
+                  {
+                    ids: valueIds,
+                    fields: ['id', 'name'],
+                  },
+                )
+              : []
+
+          const attrData = attr[0] as Record<string, unknown> | undefined
+          attributeLines.push({
+            id: (line.id as number) || 0,
+            name: (attrData?.name as string) || '',
+            attribute: attrData
+              ? {
+                  id: (attrData.id as number) || 0,
+                  name: (attrData.name as string) || '',
+                }
+              : null,
+            display_type: (attrData?.display_type as any) || 'radio',
+            values,
+          })
+        }
+      }
+
+      // 3. Process Combo Lines
+      if (comboIds.length > 0) {
         const combos = await odooCall<Record<string, unknown>[]>(
           'product.combo',
           'read',
           {
             ids: comboIds,
-            fields: ['id'],
+            fields: ['id', 'name', 'combo_item_ids'],
           },
         )
 
-        const comboItems = await odooCall<Record<string, unknown>[]>(
-          'product.combo.item',
-          'search_read',
-          {
-            domain: [['combo_id', 'in', comboIds]],
-            fields: ['combo_id', 'product_id'],
-          },
-        )
-
-        const productsByComboId: Record<number, number[]> = {}
-        for (const item of comboItems) {
-          const comboId =
-            (item.combo_id as [number, string] | undefined)?.[0] || 0
-          const productId =
-            (item.product_id as [number, string] | undefined)?.[0] || 0
-          if (!productsByComboId[comboId]) {
-            productsByComboId[comboId] = []
-          }
-          productsByComboId[comboId].push(productId)
-        }
-
-        const allProductIds = [
-          ...new Set(Object.values(productsByComboId).flat()),
-        ]
-
-        const productDetailsMap: Record<
-          number,
-          { id: number; name: string; list_price: number }
-        > = {}
-        if (allProductIds.length > 0) {
-          const productsData = await odooCall<Record<string, unknown>[]>(
-            'product.product',
+        const allComboItemIds = combos.flatMap(c => (c.combo_item_ids as number[] || []))
+        
+        if (allComboItemIds.length > 0) {
+          const comboItems = await odooCall<Record<string, unknown>[]>(
+            'product.combo.item',
             'read',
             {
-              ids: allProductIds,
-              fields: ['id', 'name', 'list_price'],
+              ids: allComboItemIds,
+              fields: ['combo_id', 'product_id', 'extra_price'],
             },
           )
-          for (const p of productsData) {
-            const pid = (p.id as number) || 0
-            productDetailsMap[pid] = {
-              id: pid,
-              name: (p.name as string) || '',
-              list_price: (p.list_price as number) || 0,
+
+          const productsByComboId: Record<number, Array<{ productId: number; extraPrice: number }>> = {}
+          for (const item of comboItems) {
+            const rawComboId = item.combo_id
+            const comboId = Array.isArray(rawComboId) ? rawComboId[0] : (rawComboId as number) || 0
+            
+            const rawProductId = item.product_id
+            const productId = Array.isArray(rawProductId) ? rawProductId[0] : (rawProductId as number) || 0
+            
+            const extraPrice = (item.extra_price as number) || 0
+            
+            if (!productsByComboId[comboId]) {
+              productsByComboId[comboId] = []
+            }
+            productsByComboId[comboId].push({ productId, extraPrice })
+          }
+
+          const allProductIds = [
+            ...new Set(Object.values(productsByComboId).flat().map(p => p.productId)),
+          ]
+
+          const productDetailsMap: Record<
+            number,
+            { id: number; name: string; list_price: number }
+          > = {}
+          if (allProductIds.length > 0) {
+            const productsData = await odooCall<Record<string, unknown>[]>(
+              'product.product',
+              'read',
+              {
+                ids: allProductIds,
+                fields: ['id', 'name', 'list_price'],
+              },
+            )
+            for (const p of productsData) {
+              const pid = (p.id as number) || 0
+              productDetailsMap[pid] = {
+                id: pid,
+                name: (p.name as string) || '',
+                list_price: (p.list_price as number) || 0,
+              }
             }
           }
-        }
 
-        for (const combo of combos) {
-          const comboId = (combo.id as number) || 0
-          const productIdsForCombo = productsByComboId[comboId] || []
-          const productsList = productIdsForCombo
-            .map((pid: number) => productDetailsMap[pid])
-            .filter(Boolean)
+          for (const combo of combos) {
+            const comboId = (combo.id as number) || 0
+            const itemDetails = productsByComboId[comboId] || []
+            const productsList = itemDetails
+              .map(item => {
+                  const prod = productDetailsMap[item.productId]
+                  if (!prod) return null
+                  return {
+                      ...prod,
+                      list_price: prod.list_price + item.extraPrice
+                  }
+              })
+              .filter(Boolean)
 
-          comboLines.push({
-            id: comboId,
-            combo_category_id: (combo as Record<string, unknown>)
-              .combo_category_id as
-              | string
-              | [number, string]
-              | null
-              | undefined,
-            max_item: ((combo as Record<string, unknown>).max_item ||
-              1) as number,
-            included_item: 0, // Assuming 0 as the field is not available
-            required: false, // Assuming false as the field is not available
-            products: productsList,
-          })
+            comboLines.push({
+              id: comboId,
+              name: (combo.name as string) || `Option ${comboLines.length + 1}`,
+              combo_category_id: (combo as Record<string, unknown>).combo_category_id as any,
+              max_item: ((combo as Record<string, unknown>).max_item || 1) as number,
+              included_item: 0,
+              required: true,
+              product_ids: itemDetails.map(d => d.productId),
+              products: productsList as any,
+            })
+          }
         }
       }
     }
 
-    // Fetch tax details for the product
+    // 4. Fetch tax details
     let productTaxes: Array<{
       id: number
       name: string
@@ -254,16 +274,17 @@ export async function GET(request: NextRequest) {
       }))
     }
 
-    const result: ProductDetails = {
+    const result = {
       product,
       attributes: attributeLines,
-      comboLines: comboLines,
+      combo_lines: comboLines,
       taxes: productTaxes,
     }
 
     return NextResponse.json(result)
   } catch (error) {
     const odooError = error as OdooClientError
+    console.error('[API /restaurant/product-details GET] Error:', odooError.message)
     return NextResponse.json(
       {
         message: odooError.message,

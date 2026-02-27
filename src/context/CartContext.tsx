@@ -4,6 +4,15 @@ import React, { createContext, useContext, useState, useCallback } from 'react'
 import type { Product, CartItem, CartItemMeta } from '@/lib/types'
 import { useToast } from '@/hooks/use-toast'
 
+export interface LastOrder {
+  id: string
+  items: CartItem[]
+  total: number
+  subtotal: number
+  tax: number
+  date: string
+}
+
 interface CartContextType {
   cartItems: CartItem[]
   addToCart: (product: Product, quantity?: number, meta?: CartItemMeta) => void
@@ -12,6 +21,11 @@ interface CartContextType {
   updateItemNotes: (cartItemId: string, notes: string) => void
   clearCart: () => void
   getCartTotal: () => number
+  cartCount: number
+  isCartOpen: boolean
+  setIsCartOpen: (isOpen: boolean) => void
+  hasOpenedAutomatically: boolean
+  lastOrder: LastOrder | null
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined)
@@ -26,6 +40,9 @@ export function useCart() {
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [cartItems, setCartItems] = useState<CartItem[]>([])
+  const [isCartOpen, setIsCartOpen] = useState(false)
+  const [hasOpenedAutomatically, setHasOpenedAutomatically] = useState(false)
+  const [lastOrder, setLastOrder] = useState<LastOrder | null>(null)
   const { toast } = useToast()
 
   const addToCart = useCallback(
@@ -51,14 +68,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             const pidsA = comboA[i].product_ids.sort()
             const pidsB = (comboB[i]?.product_ids || []).sort()
             if (pidsA.length !== pidsB.length) return false
-            if (!pidsA.every((p, idx) => p === pidsB[idx])) return false
+            if (!pidsA.every((p: number, idx: number) => p === pidsB[idx])) return false
           }
 
           // Compare metadata: extras
-          const extraA = (item.meta?.extras || []).map((e) => e.id).sort()
-          const extraB = (meta?.extras || []).map((e) => e.id).sort()
+          const extraA = (item.meta?.extras || []).map((e: Product) => e.id).sort()
+          const extraB = (meta?.extras || []).map((e: Product) => e.id).sort()
           if (extraA.length !== extraB.length) return false
-          if (!extraA.every((v, idx) => v === extraB[idx])) return false
+          if (!extraA.every((v: number, idx: number) => v === extraB[idx])) return false
 
           return true
         })
@@ -84,8 +101,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         title: 'Added to cart',
         description: `${product.name} has been added to your order.`,
       })
+      if (!hasOpenedAutomatically) {
+        setIsCartOpen(true)
+        setHasOpenedAutomatically(true)
+      }
     },
-    [toast],
+    [toast, hasOpenedAutomatically],
   )
 
   const removeFromCart = useCallback((cartItemId: string) => {
@@ -117,16 +138,38 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     )
   }, [])
 
-  const clearCart = useCallback(() => {
-    setCartItems([])
-  }, [])
-
   const getCartTotal = useCallback(() => {
     return cartItems.reduce(
       (total, item) => total + item.product.list_price * item.quantity,
       0,
     )
   }, [cartItems])
+
+  const clearCart = useCallback(() => {
+    // Capture last order before clearing if needed
+    if (cartItems.length > 0) {
+      const total = getCartTotal();
+      const subtotal = total / 1.1;
+      const tax = total - subtotal;
+
+      setLastOrder({
+        id: Math.floor(Math.random() * 1000000).toString().padStart(6, '0'),
+        items: cartItems.map(item => ({
+          ...item,
+          // Add selectedAttributes for compatibility with TrackOrderPage
+          selectedAttributes: item.meta?.attribute_value_ids ?
+            { attributes: item.meta.attribute_value_ids } : undefined
+        })),
+        total,
+        subtotal,
+        tax,
+        date: new Date().toLocaleDateString()
+      });
+    }
+    setCartItems([])
+  }, [cartItems, getCartTotal])
+
+  const cartCount = cartItems.reduce((acc, item) => acc + item.quantity, 0)
 
   const value = {
     cartItems,
@@ -136,6 +179,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     updateItemNotes,
     clearCart,
     getCartTotal,
+    cartCount,
+    isCartOpen,
+    setIsCartOpen,
+    hasOpenedAutomatically,
+    lastOrder,
   }
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>

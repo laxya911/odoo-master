@@ -13,11 +13,12 @@ async function getPaginatedData(resource: string, searchParams: URLSearchParams)
     const res = await fetch(url.toString(), { cache: 'no-store' });
     if (!res.ok) {
       const contentType = res.headers.get("content-type");
-      let errorBody: any;
+      let errorBody: Record<string, unknown> | null = null;
       let errorMessage: string;
       if (contentType && contentType.includes("application/json")) {
-        errorBody = await res.json();
-        errorMessage = errorBody.message || 'An unknown API error occurred';
+        const body = await res.json() as Record<string, unknown>;
+        errorBody = body;
+        errorMessage = (body.message as string) || 'An unknown API error occurred';
       } else {
         errorMessage = await res.text();
       }
@@ -37,7 +38,7 @@ export default async function RestaurantTablesPage({
 }) {
   const params = new URLSearchParams(JSON.parse(JSON.stringify(searchParams)));
   const tablesData = await getPaginatedData('tables', params);
-  
+
   // Fetch all floors for the filter dropdown
   const floorsData = await getPaginatedData('floors', new URLSearchParams({ limit: "100" }));
 
@@ -48,7 +49,7 @@ export default async function RestaurantTablesPage({
         <AlertTitle>Error Fetching Tables</AlertTitle>
         <AlertDescription>
           <p>{tablesData.error.message}</p>
-          {tablesData.error.odooError && <pre className="mt-2 w-full whitespace-pre-wrap rounded-md bg-destructive/20 p-2 text-xs">{JSON.stringify(tablesData.error.odooError, null, 2)}</pre>}
+          {!!tablesData.error.odooError && <pre className="mt-2 w-full whitespace-pre-wrap rounded-md bg-destructive/20 p-2 text-xs">{JSON.stringify(tablesData.error.odooError, null, 2)}</pre>}
         </AlertDescription>
       </Alert>
     );
@@ -56,7 +57,7 @@ export default async function RestaurantTablesPage({
 
   return (
     <Suspense fallback={<TablesLoading />}>
-      <TablesClient 
+      <TablesClient
         initialData={tablesData}
         floors={'error' in floorsData ? [] : floorsData.data}
       />
