@@ -14,6 +14,8 @@ import { Separator } from '@/components/ui/separator'
 import Image from 'next/image'
 import { useToast } from '@/hooks/use-toast'
 import { useCompany } from '@/context/CompanyContext'
+import { useAuth } from '@/context/AuthContext'
+import { useRouter } from 'next/navigation'
 import { useSession } from '@/context/SessionContext'
 import { CheckoutDialog } from './CheckoutDialog'
 
@@ -43,6 +45,8 @@ export function Cart() {
   const { toast } = useToast()
   const { formatPrice } = useCompany()
   const { session } = useSession()
+  const { isAuthenticated } = useAuth()
+  const router = useRouter()
   const subtotal = getCartTotal()
 
   // Fetch taxes for all products in cart
@@ -306,7 +310,17 @@ export function Cart() {
             size='lg'
             className='w-full font-bold text-lg shadow-xl hover:scale-[1.02] transition-all mb-3 bg-accent-gold hover:bg-accent-gold/90 text-primary uppercase tracking-wider h-14 rounded-2xl'
             disabled={cartItems.length === 0 || !session.isOpen}
-            onClick={() => setCheckoutOpen(true)}
+            onClick={() => {
+              if (!isAuthenticated) {
+                toast({
+                  title: 'Sign In Required',
+                  description: 'Please log in or sign up to complete your checkout.',
+                })
+                router.push(`/auth/signin?callbackUrl=${encodeURIComponent(window.location.href)}`)
+                return
+              }
+              setCheckoutOpen(true)
+            }}
           >
             {!session.isOpen ? 'Store Closed' : 'Checkout'}
           </Button>

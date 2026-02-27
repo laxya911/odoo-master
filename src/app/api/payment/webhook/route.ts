@@ -53,22 +53,24 @@ export async function POST(req: NextRequest) {
     if (event.type === 'payment_intent.succeeded') {
       const paymentIntent = event.data.object as Stripe.PaymentIntent;
       
-      console.log(`💰 Payment Intent was successful! ID: ${paymentIntent.id}`);
+      console.log(`💰 [Webhook] Payment Intent Succeeded: ${paymentIntent.id}`);
+      console.log(`💰 [Webhook] Amount: ${paymentIntent.amount} ${paymentIntent.currency}`);
 
       const metadata = paymentIntent.metadata;
-      if (!metadata) {
-          console.error('[API /payment/webhook] No metadata found in payment intent - cannot fulfill order.');
+      if (!metadata || !metadata.line_items) {
+          console.error('❌ [Webhook] FATAL: No metadata or line_items found in payment intent. Cannot fulfill order.');
           return NextResponse.json({ received: true }); 
       }
 
-      console.log('[API /payment/webhook] Metadata reconstructed:', metadata);
-
+      console.log('📦 [Webhook] Reconstructing order from metadata...');
       // Reconstruct payload from trusted Stripe metadata we injected during payment intent creation.
       let lineItems = [];
       try {
         lineItems = JSON.parse(metadata.line_items || '[]');
+        console.log(`📦 [Webhook] Parsed ${lineItems.length} line items.`);
       } catch (e) {
-        console.error('[API /payment/webhook] Failed to parse line_items metadata:', e);
+        console.error('❌ [Webhook] Failed to parse line_items metadata:', e);
+        return NextResponse.json({ error: 'Metadata parse error' }, { status: 400 });
       }
 
       const currency = await getCompanyCurrency();
@@ -95,24 +97,24 @@ export async function POST(req: NextRequest) {
         total: actualAmount
       };
 
-      console.log('[API /payment/webhook] Final Fulfillment Payload:', JSON.stringify(fulfillmentPayload, null, 2));
-
+      console.log('🚀 [Webhook] Triggering Odoo Fulfillment...');
       try {
         const result = await fulfillOdooOrder(fulfillmentPayload, paymentIntent.id);
-        console.log('✅ Odoo Fulfillment Success:', result);
+        console.log('✅ [Webhook] Fulfillment SUCCESS:', result.posReference);
       } catch (fulfillError) {
-        console.error('❌ Odoo Fulfillment Failed:', fulfillError);
+        const err = fulfillError as Error;
+        console.error('❌ [Webhook] Fulfillment FAILED:', err.message);
         // We return 500 so Stripe retries if it's a transient failure
-        return NextResponse.json({ error: 'Fulfillment failed' }, { status: 500 });
+        return NextResponse.json({ error: `Fulfillment failed: ${err.message}` }, { status: 500 });
       }
     } else {
-        console.log(`[API /payment/webhook] Ignored event type: ${event.type}`);
+        console.log(`[Webhook] Ignored event type: ${event.type}`);
     }
 
     return NextResponse.json({ received: true });
   } catch (error) {
     const err = error as Error;
-    console.error('[API /payment/webhook] Unhandled server error:', err.message);
-    return NextResponse.json({ error: 'Server processing error' }, { status: 500 });
+    console.error('❌ [Webhook] Critical internal error:', err.message);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

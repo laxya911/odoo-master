@@ -1,38 +1,36 @@
 import type { Metadata } from 'next';
-import type { Product, Paginated, OdooRecord, OdooError } from '@/lib/types';
+import { getRestaurantProducts, getRestaurantProductDetails } from '@/lib/odoo-products';
 import { ProductView } from '@/components/menu/ProductView';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertTriangle } from 'lucide-react';
 import { generateSlug } from '@/lib/utils';
+import type { Product } from '@/lib/types';
 
-async function getProducts(): Promise<Paginated<OdooRecord> | { error: OdooError }> {
-  const url = new URL(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/odoo/restaurant/products`);
+import { OdooClientError } from '@/lib/odoo-client';
+
+async function getProducts() {
   try {
-    const res = await fetch(url.toString(), { cache: 'no-store' });
-    if (!res.ok) return { error: { message: 'Failed to fetch products', status: res.status } };
-    return res.json();
+    return await getRestaurantProducts({ limit: 1000 });
   } catch (e) {
-    return { error: { message: (e as Error).message, status: 500 } };
+    if (e instanceof OdooClientError) {
+      return { error: { message: e.message, status: e.status, odooError: e.odooError } };
+    }
+    const error = e as Error;
+    return { error: { message: error.message, status: 500 } };
   }
 }
 
-async function getProductDetails(id: number): Promise<Partial<Product> | null> {
-  const url = new URL(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/odoo/restaurant/product-details?id=${id}`);
+async function getProductDetails(id: number) {
   try {
-    const res = await fetch(url.toString(), { cache: 'no-store' });
-    if (!res.ok) return null;
-    return res.json();
+    return await getRestaurantProductDetails(id);
   } catch (e) {
     return null;
   }
 }
 
 export async function generateStaticParams() {
-  const url = new URL(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/odoo/restaurant/products`);
   try {
-    const res = await fetch(url.toString());
-    if (!res.ok) return [];
-    const data = await res.json();
+    const data = await getRestaurantProducts({ limit: 1000 });
     return (data.data || []).map((p: Product) => ({
       slug: generateSlug(p.name),
     }));

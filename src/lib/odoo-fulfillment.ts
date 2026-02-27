@@ -126,22 +126,33 @@ export async function fulfillOdooOrder(payload: OrderPayload, stripePaymentInten
   };
 
   // 5. Create POS Order
-  console.log('[Fulfillment] Creating POS Order...');
-  const orderIds = await odooCall<number[]>('pos.order', 'create', { vals_list: [orderData] });
-  const orderId = orderIds[0];
-  console.log(`[Fulfillment] POS Order created with ID: ${orderId}`);
+  console.log(`🚀 [Fulfillment] Creating POS Order for Partner ID: ${partnerId}...`);
+  let orderId: number;
+  try {
+    const orderIds = await odooCall<number[]>('pos.order', 'create', { vals_list: [orderData] });
+    orderId = orderIds[0];
+    console.log(`✅ [Fulfillment] POS Order created with ID: ${orderId}`);
+  } catch (e) {
+    console.error('❌ [Fulfillment] Failed to create POS Order:', e);
+    throw e;
+  }
 
   // 6. Add Payment
-  console.log(`[Fulfillment] Adding payment of ${orderBreakdown.amount_total} to order...`);
-  await odooCall('pos.order', 'add_payment', {
-    ids: [orderId],
-    data: {
-      pos_order_id: orderId,
-      amount: orderBreakdown.amount_total,
-      payment_method_id: paymentMethodId,
-    },
-  });
-  console.log('[Fulfillment] Payment added.');
+  console.log(`💳 [Fulfillment] Adding payment of ${orderBreakdown.amount_total} using Method ID: ${paymentMethodId}...`);
+  try {
+    await odooCall('pos.order', 'add_payment', {
+      ids: [orderId],
+      data: {
+        pos_order_id: orderId,
+        amount: orderBreakdown.amount_total,
+        payment_method_id: paymentMethodId,
+      },
+    });
+    console.log('✅ [Fulfillment] Payment added successfully.');
+  } catch (e) {
+    console.error('❌ [Fulfillment] Failed to add payment to order:', e);
+    throw e;
+  }
 
   // 7. Validate & Invoice
   console.log('[Fulfillment] Moving order to paid state...');
