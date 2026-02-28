@@ -38,6 +38,9 @@ export default function ProfilePage() {
         image_1920: ''
     });
 
+    // Initial state to track changes
+    const [initialFormData, setInitialFormData] = useState<typeof formData | null>(null);
+
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
@@ -79,7 +82,7 @@ export default function ProfilePage() {
             // API returns { partner, recentOrders } - extract partner
             const partner = data.partner || data;
             setUserDetails(partner);
-            setFormData({
+            const initial = {
                 name: partner.name || user.name || '',
                 phone: partner.phone || '',
                 street: partner.street || '',
@@ -87,7 +90,9 @@ export default function ProfilePage() {
                 zip: partner.zip || '',
                 country_string: Array.isArray(partner.country_id) ? partner.country_id[1] : '',
                 image_1920: partner.image_1920 ? `data:image/png;base64,${partner.image_1920}` : ''
-            });
+            };
+            setFormData(initial);
+            setInitialFormData(initial);
 
             // Fetch orders separately
             fetchOrders();
@@ -128,10 +133,33 @@ export default function ProfilePage() {
     const handleSave = async () => {
         setIsSaving(true);
         try {
+            // Find only changed fields
+            const changedFields: Record<string, any> = {};
+
+            if (formData.name !== initialFormData?.name) changedFields.name = formData.name;
+            if (formData.phone !== initialFormData?.phone) changedFields.phone = formData.phone;
+            if (formData.street !== initialFormData?.street) changedFields.street = formData.street;
+            if (formData.city !== initialFormData?.city) changedFields.city = formData.city;
+            if (formData.zip !== initialFormData?.zip) changedFields.zip = formData.zip;
+
+            // Handle image specifically: strip 'data:image/...;base64,' prefix
+            if (formData.image_1920 !== initialFormData?.image_1920) {
+                const base64Content = formData.image_1920.includes('base64,')
+                    ? formData.image_1920.split('base64,')[1]
+                    : formData.image_1920;
+                changedFields.image_1920 = base64Content;
+            }
+
+            if (Object.keys(changedFields).length === 0) {
+                setIsEditing(false);
+                setIsSaving(false);
+                return;
+            }
+
             const res = await fetch('/api/odoo/restaurant/profile/update', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(formData)
+                body: JSON.stringify({ ...changedFields, email: user?.email })
             });
 
             if (!res.ok) throw new Error('Failed to update profile');

@@ -25,7 +25,7 @@ interface CheckoutFormInnerProps {
     provider: PaymentProvider;
 }
 
-export const CheckoutFormInner = memo(({
+const CheckoutFormInnerBase = ({
     cartItems,
     total,
     totalTax,
@@ -254,4 +254,7 @@ export const CheckoutFormInner = memo(({
             </footer>
         </form>
     );
-});
+};
+
+export const CheckoutFormInner = memo(CheckoutFormInnerBase);
+CheckoutFormInner.displayName = 'CheckoutFormInner';

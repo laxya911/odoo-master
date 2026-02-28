@@ -35,6 +35,8 @@ export async function POST(req: NextRequest) {
     const body = await req.text();
     const signature = req.headers.get('stripe-signature');
 
+    console.log(`[API /payment/webhook] Body length: ${body.length}, Signature present: ${!!signature}`);
+
     if (!signature) {
       console.error('[API /payment/webhook] No stripe-signature header found');
       return NextResponse.json({ error: 'No signature provided' }, { status: 400 });

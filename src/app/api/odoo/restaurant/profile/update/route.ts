@@ -3,8 +3,16 @@ import { odooCall, OdooClientError } from '@/lib/odoo-client'
 import type { Partner } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
-
+ 
+export async function PATCH(request: NextRequest) {
+   return await handleUpdate(request)
+}
+ 
 export async function POST(request: NextRequest) {
+   return await handleUpdate(request)
+}
+ 
+async function handleUpdate(request: NextRequest) {
   try {
     const payload = await request.json()
     const { email, name, phone, street, city, zip, image_1920 } = payload
@@ -47,7 +55,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, message: 'Profile updated successfully' })
   } catch (error) {
     const odooError = error as OdooClientError
-    console.error('[API /restaurant/profile/update POST] Error:', odooError.message)
+    console.error('[API /restaurant/profile/update] Error:', odooError.message)
     return NextResponse.json(
       { message: odooError.message, odooError: odooError.odooError },
       { status: odooError.status || 500 }
