@@ -100,11 +100,12 @@ export async function POST(req: NextRequest) {
         city: body.customer.city || '',
         zip: body.customer.zip || '',
         notes: body.notes || '',
+        // Store items in a more compact way or split if needed
         line_items: JSON.stringify(orderLines.map(l => ({
             p: l.product_id,
             q: l.quantity,
-            note: l.notes || ''
-        }))).slice(0, 500) // Keep <= 500 chars for Stripe limitations
+            n: l.notes ? l.notes.slice(0, 50) : '' // Compact names for notes
+        }))).slice(0, 500) 
       },
     });
 

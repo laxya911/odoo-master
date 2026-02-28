@@ -12,9 +12,9 @@ export async function fulfillOdooOrder(payload: OrderPayload, stripePaymentInten
   
   const { orderLines: cartItems, customer, paymentMethod, notes } = payload;
 
-  // 1. Find an active POS session
-  console.log('[Fulfillment] Searching for active POS session...');
-  const activeSessions = await odooCall<OdooRecord[]>('pos.session', 'search_read', {
+  // 1 & 2. Find active POS session and its payment methods in one go if possible
+  console.log('[Fulfillment] Searching for active POS session and config...');
+  const activeSessions = await odooCall<any[]>('pos.session', 'search_read', {
     domain: [['state', '=', 'opened']],
     fields: ['id', 'config_id'],
     limit: 1,
@@ -26,26 +26,28 @@ export async function fulfillOdooOrder(payload: OrderPayload, stripePaymentInten
   }
 
   const session = activeSessions[0];
-  const sessionId = session.id as number;
-  const configId = (session.config_id as [number, string])[0];
-  console.log(`[Fulfillment] Using Session ID: ${sessionId}, Config ID: ${configId}`);
-
-  // 2. Map Payment Method (Map to 'Card' for online payments to avoid 422 errors)
-  let targetMethodName = 'Card';
-  if (paymentMethod === 'cash') targetMethodName = 'Cash';
-
-  console.log(`[Fulfillment] Mapping payment method for name: ${targetMethodName}`);
-  const posConfig = await odooCall<OdooRecord[]>('pos.config', 'read', {
+  const sessionId = session.id;
+  const configId = session.config_id[0];
+  
+  // Directly fetch payment methods for this config
+  const posConfig = await odooCall<any[]>('pos.config', 'read', {
     ids: [configId],
     fields: ['payment_method_ids'],
   });
 
-  const paymentMethodIds = posConfig[0].payment_method_ids as number[];
-  const paymentMethods = await odooCall<OdooRecord[]>('pos.payment.method', 'search_read', {
+  const paymentMethodIds = posConfig[0].payment_method_ids;
+  
+  // 2. Map Payment Method (Map to 'Stripe' for online payments in Odoo 19)
+  let targetMethodName = 'Stripe';
+  if (paymentMethod === 'cash') targetMethodName = 'Cash';
+
+  console.log(`[Fulfillment] Mapping payment method for name: ${targetMethodName}`);
+  const paymentMethods = await odooCall<any[]>('pos.payment.method', 'search_read', {
     domain: [
       ['id', 'in', paymentMethodIds],
       ['name', 'ilike', targetMethodName],
-      ['is_online_payment', '=', false]
+      // For Odoo 19, we want the online payment method if it exists
+      ['is_online_payment', '=', targetMethodName === 'Stripe']
     ],
     fields: ['id', 'name'],
     limit: 1,
@@ -130,10 +132,12 @@ export async function fulfillOdooOrder(payload: OrderPayload, stripePaymentInten
   let orderId: number;
   try {
     const orderIds = await odooCall<number[]>('pos.order', 'create', { vals_list: [orderData] });
+    if (!orderIds || !orderIds.length) throw new Error('Odoo returned empty ID list for order creation');
     orderId = orderIds[0];
     console.log(`✅ [Fulfillment] POS Order created with ID: ${orderId}`);
-  } catch (e) {
-    console.error('❌ [Fulfillment] Failed to create POS Order:', e);
+  } catch (e: any) {
+    console.error('❌ [Fulfillment] Failed to create POS Order (pos.order). Path: pos.order.create');
+    console.error('Error Details:', e.message, e.odooError || '');
     throw e;
   }
 

@@ -78,18 +78,19 @@ export async function POST(req: NextRequest) {
         lineItems = JSON.parse(metadata.line_items || '[]');
         console.log(`📦 [Webhook] Parsed ${lineItems.length} line items.`);
       } catch (e) {
-        console.error('❌ [Webhook] Failed to parse line_items metadata:', e);
-        return NextResponse.json({ error: 'Metadata parse error' }, { status: 400 });
+        console.error('❌ [Webhook] Failed to parse line_items metadata. JSON was likely truncated by Stripe 500-char limit.', e);
+        console.error('Raw metadata.line_items:', metadata.line_items);
+        return NextResponse.json({ error: 'Metadata parse error. Potential truncation.' }, { status: 400 });
       }
 
       const currency = await getCompanyCurrency();
       const actualAmount = fromSmallestUnit(paymentIntent.amount, currency);
 
       const fulfillmentPayload: OrderPayload = {
-        orderLines: lineItems.map((item: { p: number; q: number; note?: string }) => ({
+        orderLines: lineItems.map((item: { p: number; q: number; n?: string }) => ({
           product_id: item.p,
           quantity: item.q,
-          notes: item.note || '',
+          notes: item.n || '',
           list_price: 0 
         })),
         customer: {

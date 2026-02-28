@@ -19,8 +19,13 @@ export async function GET() {
     const ptalFields = await odooCall<any>('product.template.attribute.line', 'fields_get', { 
       attributes: ['value_ids'] 
     });
-    const ptavFields = await odooCall<any>('product.template.attribute.value', 'fields_get', { 
-      attributes: ['name', 'price_extra', 'product_attribute_value_id'] 
+    const ptavFields = await odooCall<any>('product.template.attribute.value', 'read', { 
+      ids: [], // Just to see if it errors or works empty
+      fields: ['name', 'price_extra', 'product_attribute_value_id'] 
+    }).catch(e => e.message);
+
+    const ppmFields = await odooCall<any>('pos.payment.method', 'fields_get', {
+      attributes: ['name', 'is_online_payment', 'is_cash_count', 'use_payment_terminal']
     });
 
     const pingEnd = Date.now();
@@ -30,7 +35,8 @@ export async function GET() {
       config,
       odoo19_inspect: {
         ptal: ptalFields,
-        ptav: ptavFields
+        ptav: ptavFields,
+        ppm: ppmFields
       },
       ping: {
         success: true,
