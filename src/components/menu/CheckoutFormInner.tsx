@@ -100,11 +100,6 @@ const CheckoutFormInnerBase = ({
                     });
                     onSuccess();
                 }
-
-            } else if (provider === 'demo_online') {
-                // Fallback simulation
-                await new Promise(resolve => setTimeout(resolve, 1500));
-                onSuccess();
             }
 
         } catch (error: any) {
@@ -232,7 +227,7 @@ const CheckoutFormInnerBase = ({
                                 <PaymentElement options={{ layout: 'tabs' }} className="theme-dark" />
                             ) : (
                                 <div className="text-center py-6 text-neutral-400 text-sm">
-                                    {provider === 'demo_online' ? 'Demo mode: Click Place Order to simulate payment.' : 'Loading payment element...'}
+                                    Securing payment gateway...
                                 </div>
                             )}
                         </div>

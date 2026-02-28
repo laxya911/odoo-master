@@ -27,6 +27,7 @@ import { loadStripe } from '@stripe/stripe-js'
 import { Elements } from '@stripe/react-stripe-js'
 import { CheckoutFormInner } from './CheckoutFormInner'
 import type { PaymentConfigResponse } from '@/lib/types'
+import { useRef } from 'react'
 
 const checkoutSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters.' }),
@@ -85,7 +86,7 @@ const CheckoutDialog = memo(({
       orderType: 'delivery',
       tableNumber: '',
       notes: '',
-      paymentMethod: 'demo_online' as PaymentProvider,
+      paymentMethod: 'stripe' as PaymentProvider,
     },
   })
 
@@ -121,14 +122,33 @@ const CheckoutDialog = memo(({
     }
   }, [isOpen]);
 
+  // Memoize cart data to keep the dependency stable for the Payment Intent effect
+  const cartData = useMemo(() => ({
+    items: cartItems,
+    total,
+    subtotal
+  }), [cartItems, total, subtotal]);
+
+  const isCreatingIntent = useRef(false);
+
+  // Reset clientSecret if cart data changes to ensure correct amount
+  useEffect(() => {
+    if (clientSecret) {
+      setClientSecret(null);
+    }
+  }, [cartData]);
+
   // Generate Payment Intent on unmount / config load
   useEffect(() => {
-    if (isOpen && config?.provider === 'stripe' && !clientSecret && cartItems.length > 0) {
+    if (isOpen && config?.provider === 'stripe' && !clientSecret && cartData.items.length > 0 && !isCreatingIntent.current) {
+      console.log("[CheckoutDialog] Creating Payment Intent...");
+      isCreatingIntent.current = true;
+
       fetch('/api/payment/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          cart: { items: cartItems, total, subtotal },
+          cart: cartData,
           customer: form.getValues(),
           orderType: form.getValues('orderType')
         })
@@ -139,9 +159,12 @@ const CheckoutDialog = memo(({
             setClientSecret(data.clientSecret);
           }
         })
-        .catch(err => console.error("Failed to create payment intent", err));
+        .catch(err => console.error("Failed to create payment intent", err))
+        .finally(() => {
+          isCreatingIntent.current = false;
+        });
     }
-  }, [isOpen, config, cartItems, total, subtotal, form, user]);
+  }, [isOpen, config, clientSecret, cartData, form]);
 
   const handleCheckoutSuccess = () => {
     // In strict webhook architecture, UI success means payment was captured/processed by SDK.

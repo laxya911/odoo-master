@@ -202,16 +202,21 @@ export async function fulfillOdooOrder(payload: OrderPayload, stripePaymentInten
     }
   }
 
-  // 8. Fetch Reference
+  // 8. Fetch Reference & Status
   const final = await odooCall<Array<{ pos_reference: string; state: string }>>('pos.order', 'read', {
     ids: [orderId],
     fields: ['pos_reference', 'state']
   });
 
-  console.log(`--- Order #${orderId} fulfilled successfully with state: ${final[0]?.state} ---`);
+  const finalState = final[0]?.state || 'unknown';
+  console.log(`✅ [Fulfillment] Order #${orderId} (Ref: ${final[0]?.pos_reference}) processed. Final State: ${finalState}`);
+  if (stripePaymentIntentId) {
+    console.log(`🔗 [Fulfillment] Linked to Stripe Payment Intent: ${stripePaymentIntentId}`);
+  }
 
   return {
     orderId,
-    posReference: final[0]?.pos_reference || `Order #${orderId}`
+    posReference: final[0]?.pos_reference || `Order #${orderId}`,
+    state: finalState
   };
 }
