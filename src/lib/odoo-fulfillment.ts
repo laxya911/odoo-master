@@ -42,38 +42,52 @@ export async function fulfillOdooOrder(payload: OrderPayload, stripePaymentInten
   if (paymentMethod === 'cash') targetMethodName = 'Cash';
 
   console.log(`[Fulfillment] Mapping payment method for name: ${targetMethodName}`);
-  const paymentMethods = await odooCall<any[]>('pos.payment.method', 'search_read', {
+  
+  // ODOO 19 CAUTION: Methods with is_online_payment=true cannot be used via add_payment 
+  // without an accounting transaction. For external Stripe payments, we use a standard method.
+  let paymentMethods = await odooCall<any[]>('pos.payment.method', 'search_read', {
     domain: [
       ['id', 'in', paymentMethodIds],
       ['name', 'ilike', targetMethodName],
-      // For Odoo 19, we want the online payment method if it exists
-      ['is_online_payment', '=', targetMethodName === 'Stripe']
+      ['is_online_payment', '=', false] // Prioritize non-online method matching name
     ],
-    fields: ['id', 'name'],
+    fields: ['id', 'name', 'is_online_payment'],
     limit: 1,
   });
 
   if (!paymentMethods || paymentMethods.length === 0) {
-    console.warn(`[Fulfillment] Method "${targetMethodName}" not found, trying fallback...`);
-    // Fallback to first non-cash, non-online method
-    const fallback = await odooCall<OdooRecord[]>('pos.payment.method', 'search_read', {
+    console.warn(`[Fulfillment] No non-online method named "${targetMethodName}" found, trying generic fallback...`);
+    // Fallback to any non-online, non-cash method (like 'Card')
+    const fallback = await odooCall<any[]>('pos.payment.method', 'search_read', {
       domain: [
         ['id', 'in', paymentMethodIds],
         ['is_cash_count', '=', false],
         ['is_online_payment', '=', false]
       ],
-      fields: ['id', 'name'],
+      fields: ['id', 'name', 'is_online_payment'],
       limit: 1,
     });
-    if (!fallback.length) {
-      console.error('[Fulfillment] No suitable POS payment method found even after fallback.');
-      throw new Error('No suitable POS payment method found.');
+    
+    if (fallback.length > 0) {
+      paymentMethods = fallback;
+    } else {
+      // Last resort: use the first available method even if it's cash
+      const anyMethod = await odooCall<any[]>('pos.payment.method', 'search_read', {
+        domain: [['id', 'in', paymentMethodIds]],
+        fields: ['id', 'name', 'is_online_payment'],
+        limit: 1,
+      });
+      if (!anyMethod.length) {
+        console.error('[Fulfillment] No suitable POS payment method found even after multiple fallbacks.');
+        throw new Error('No suitable POS payment method found.');
+      }
+      paymentMethods = anyMethod;
     }
-    paymentMethods.push(fallback[0]);
   }
 
-  const paymentMethodId = paymentMethods[0].id as number;
-  console.log(`[Fulfillment] Selected Payment Method: ${paymentMethods[0].name} (ID: ${paymentMethodId})`);
+  const selectedMethod = paymentMethods[0];
+  const paymentMethodId = selectedMethod.id as number;
+  console.log(`[Fulfillment] Selected Payment Method: ${selectedMethod.name} (ID: ${paymentMethodId}, Online: ${selectedMethod.is_online_payment})`);
 
   // 3. Find or Create Partner
   console.log(`[Fulfillment] Handling partner for email: ${customer.email}`);
@@ -123,8 +137,11 @@ export async function fulfillOdooOrder(payload: OrderPayload, stripePaymentInten
     amount_total: orderBreakdown.amount_total,
     amount_paid: 0,
     amount_return: 0,
+    source: 'mobile', // Odoo 19 specific
+    is_api_order: true,
+    api_source: 'native_web',
     general_customer_note: notes || '',
-    note: `Stripe Payment ID: ${stripePaymentIntentId || 'N/A'}`
+    note: undefined, // Explicitly remove invalid field
   };
 
   // 5. Create POS Order

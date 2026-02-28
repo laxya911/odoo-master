@@ -141,7 +141,7 @@ export async function getRestaurantProductDetails(id: number) {
         'read',
         {
           ids: tmplAttributeLineIds,
-          fields: ['id', 'attribute_id', 'value_ids'],
+          fields: ['id', 'attribute_id', 'product_template_value_ids'],
         },
       );
 
@@ -156,8 +156,8 @@ export async function getRestaurantProductDetails(id: number) {
       
       const attrMap = new RecordMap(attributesData);
 
-      // Batch fetch all attribute values (Odoo 17 uses product.template.attribute.value for extras)
-      const allValueIds = [...new Set(lines.flatMap(l => (l.value_ids as number[]) || []))];
+      // Batch fetch all template attribute values (Odoo 19)
+      const allValueIds = [...new Set(lines.flatMap(l => (l.product_template_value_ids as number[]) || []))];
       const allValues = allValueIds.length > 0
         ? await odooCall<any[]>('product.template.attribute.value', 'read', {
             ids: allValueIds,
@@ -170,7 +170,7 @@ export async function getRestaurantProductDetails(id: number) {
       for (const line of lines) {
         const attrId = (line.attribute_id as [number, string] | undefined)?.[0];
         const attrData = attrId ? attrMap.get(attrId) : null;
-        const valueIds = (line.value_ids as number[] | undefined) || [];
+        const valueIds = (line.product_template_value_ids as number[] | undefined) || [];
         const values = valueIds.map(vid => valueMap.get(vid)).filter(Boolean);
 
         attributeLines.push({
