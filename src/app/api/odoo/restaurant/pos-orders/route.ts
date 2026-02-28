@@ -15,6 +15,7 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get('end_date')
     const sessionId = searchParams.get('session_id')
     const email = searchParams.get('email')
+    const name = searchParams.get('name')
 
     const domain: Array<unknown> = []
     if (startDate) {
@@ -28,6 +29,9 @@ export async function GET(request: NextRequest) {
     }
     if (email) {
       domain.push(['partner_id.email', '=', email])
+    }
+    if (name) {
+      domain.push(['name', 'ilike', name])
     }
 
     const fieldsDef = await odooCall<Record<string, unknown>>(

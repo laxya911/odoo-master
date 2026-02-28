@@ -4,22 +4,25 @@ import type { OrderLineItem } from './types'
 export async function calculateOrderTotal(orderLines: OrderLineItem[]) {
   // Fetch product tax relations for all products
   const productIds = Array.from(new Set(orderLines.map((i) => i.product_id)))
-  const productsWithTaxes = await odooCall<Array<{ id: number; taxes_id: number[] }>>(
+  const productsWithData = await odooCall<Array<{ id: number; taxes_id: number[]; list_price: number }>>(
     'product.product',
     'read',
     {
       ids: productIds,
-      fields: ['id', 'taxes_id'],
+      fields: ['id', 'taxes_id', 'list_price'],
     },
   )
 
-  const taxIdMap: Record<number, number[]> = {}
-  for (const prod of productsWithTaxes) {
-    taxIdMap[prod.id] = prod.taxes_id || []
+  const productDataMap: Record<number, { taxes_id: number[]; list_price: number }> = {}
+  for (const prod of productsWithData) {
+    productDataMap[prod.id] = {
+      taxes_id: prod.taxes_id || [],
+      list_price: prod.list_price || 0
+    }
   }
 
   // Collect all tax ids used and fetch tax records
-  const allTaxIds = Array.from(new Set(Object.values(taxIdMap).flat()))
+  const allTaxIds = Array.from(new Set(Object.values(productDataMap).flatMap(p => p.taxes_id)))
   const taxes =
     allTaxIds.length > 0
       ? await odooCall<Array<{ id: number; amount: number; amount_type: string; price_include: boolean }>>('account.tax', 'read', {
@@ -38,7 +41,8 @@ export async function calculateOrderTotal(orderLines: OrderLineItem[]) {
 
   const processedLines = orderLines.map((item) => {
     const qty = item.quantity
-    const applicableTaxIds = taxIdMap[item.product_id] || []
+    const pData = productDataMap[item.product_id] || { taxes_id: [], list_price: 0 }
+    const applicableTaxIds = pData.taxes_id
     
     let totalExcludedRate = 0
     for (const tid of applicableTaxIds) {
@@ -48,7 +52,8 @@ export async function calculateOrderTotal(orderLines: OrderLineItem[]) {
       }
     }
 
-    let priceUnit = item.list_price
+    // Use fetched list_price if item.list_price is missing/zero
+    let priceUnit = item.list_price || pData.list_price
     if (totalExcludedRate > 0) {
         priceUnit = priceUnit / (1 + totalExcludedRate)
         priceUnit = Number(priceUnit.toFixed(2))

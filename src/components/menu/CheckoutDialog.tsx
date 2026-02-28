@@ -158,15 +158,20 @@ const CheckoutDialog = memo(({
 
     if (isSuccess && !placedOrderRef) {
       const email = form.getValues('email');
+      // Extract payment intent suffix if clientSecret is available
+      const piSuffix = clientSecret ? clientSecret.split('_')[1]?.slice(-6) : null;
 
       const poll = async () => {
         try {
-          const res = await fetch(`/api/odoo/restaurant/pos-orders?limit=1&email=${encodeURIComponent(email)}`);
+          const query = piSuffix
+            ? `name=${encodeURIComponent(`Online Order - ${piSuffix}`)}`
+            : `limit=1&email=${encodeURIComponent(email)}`;
+
+          const res = await fetch(`/api/odoo/restaurant/pos-orders?${query}`);
           const result = await res.json();
 
           if (result.data && result.data.length > 0) {
             const latestOrder = result.data[0];
-            // If the order is very recent (e.g. within last 2 mins), assume it's ours
             setPlacedOrderId(latestOrder.id);
             setPlacedOrderRef(latestOrder.pos_reference);
             clearInterval(pollInterval);
