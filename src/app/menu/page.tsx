@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-export const dynamic = 'force-dynamic';
+export const revalidate = 3600; // 1 hour buffer
 import { getRestaurantProducts } from '@/lib/odoo-products';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertTriangle } from 'lucide-react';

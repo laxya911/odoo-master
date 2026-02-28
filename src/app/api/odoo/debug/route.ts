@@ -33,6 +33,7 @@ export async function GET() {
       ping: {
         success: false,
         error: error.message,
+        details: error.odooError || null, // Capture Odoo error if any
       }
     }, { status: 500 });
   }

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-export const dynamic = 'force-dynamic';
+export const revalidate = 3600;
 import { getRestaurantProducts, getRestaurantProductDetails } from '@/lib/odoo-products';
 import { ProductView } from '@/components/menu/ProductView';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -29,9 +29,6 @@ async function getProductDetails(id: number) {
   }
 }
 
-// Removing generateStaticParams as it conflicts with force-dynamic odooCall (no-store)
-// and ensures the page is always rendered dynamically on demand.
-/*
 export async function generateStaticParams() {
   try {
     const data = await getRestaurantProducts({ limit: 1000 });
@@ -42,7 +39,6 @@ export async function generateStaticParams() {
     return [];
   }
 }
-*/
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
