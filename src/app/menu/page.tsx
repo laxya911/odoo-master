@@ -1,4 +1,5 @@
 import { Suspense } from 'react';
+export const dynamic = 'force-dynamic';
 import { getRestaurantProducts } from '@/lib/odoo-products';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertTriangle } from 'lucide-react';

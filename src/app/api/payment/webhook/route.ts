@@ -12,10 +12,16 @@ export async function POST(req: NextRequest) {
   console.log('Target URL: /api/payment/webhook');
   try {
     // 1. Fetch active Stripe provider from Odoo to get keys
-    const providers = await odooCall<any[]>('payment.provider', 'search_read', {
-      domain: [['code', '=', 'stripe'], ['state', 'in', ['enabled', 'test']]],
-      fields: ['id', 'stripe_secret_key', 'stripe_webhook_secret'],
-    });
+    let providers: any[] = [];
+    try {
+      providers = await odooCall<any[]>('payment.provider', 'search_read', {
+        domain: [['code', '=', 'stripe'], ['state', 'in', ['enabled', 'test']]],
+        fields: ['id', 'stripe_secret_key', 'stripe_webhook_secret'],
+      });
+    } catch (e) {
+      console.error('[API /payment/webhook] FAILED to fetch Stripe credentials from Odoo. Check ODOO_API_KEY and connection.', e);
+      return NextResponse.json({ error: 'Internal connection error' }, { status: 500 });
+    }
 
     if (!providers || providers.length === 0) {
       console.error('[API /payment/webhook] No active Stripe provider found in Odoo');
