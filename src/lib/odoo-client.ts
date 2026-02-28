@@ -36,9 +36,10 @@ export async function odooCall<T>(
   
   const headers = {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${apiKey}`, // Capitalized Bearer
+    'Authorization': `Bearer ${apiKey}`, 
     'X-Odoo-Database': db,
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36', // Generic UA
+    'User-Agent': 'RAM-Restaurant-Website/1.0',
+    'X-Requested-With': 'XMLHttpRequest', // Force Odoo to treat as AJAX if needed
   };
   
   const bodyPayload = {
@@ -49,7 +50,6 @@ export async function odooCall<T>(
   const body = JSON.stringify(bodyPayload);
 
   console.log(`[odooCall] Request: POST ${url}`);
-  console.log(`[odooCall] Headers:`, JSON.stringify({ ...headers, Authorization: 'Bearer [HIDDEN]' }));
 
   try {
     const response = await fetch(url, {
@@ -57,11 +57,14 @@ export async function odooCall<T>(
       headers: { ...headers, ...(options.headers as Record<string, string> || {}) },
       body,
       cache: 'no-store',
-      redirect: 'error', // Throw error if redirect occurs (to avoid POST -> GET method change)
+      redirect: 'follow', // Back to follow to see if connection is restored
       ...options,
     });
 
     console.log(`[odooCall] Response: ${response.status} ${response.statusText} for ${url}`);
+    if (response.redirected) {
+      console.warn(`[odooCall] WARNING: Request was REDIRECTED to ${response.url}. This likely converted POST to GET!`);
+    }
 
     if (!response.ok) {
       let errorData: any = null;

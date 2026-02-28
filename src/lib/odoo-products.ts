@@ -1,6 +1,14 @@
 import { odooCall } from './odoo-client';
 import type { OdooRecord, Product } from './types';
 
+class RecordMap {
+  private map: Map<number, any>;
+  constructor(records: any[]) {
+    this.map = new Map(records.map(r => [r.id, r]));
+  }
+  get(id: number) { return this.map.get(id); }
+}
+
 export interface GetProductsOptions {
   limit?: number;
   offset?: number;
@@ -136,32 +144,34 @@ export async function getRestaurantProductDetails(id: number) {
         },
       );
 
+      // Batch fetch all attribute names and display types
+      const attributeIds = [...new Set(lines.map(l => (l.attribute_id as [number, string])[0]))];
+      const attributesData = attributeIds.length > 0 
+        ? await odooCall<Record<string, unknown>[]>('product.attribute', 'read', {
+            ids: attributeIds,
+            fields: ['id', 'name', 'display_type'],
+          })
+        : [];
+      
+      const attrMap = new RecordMap(attributesData);
+
+      // Batch fetch all attribute values
+      const allValueIds = [...new Set(lines.flatMap(l => (l.value_ids as number[]) || []))];
+      const allValues = allValueIds.length > 0
+        ? await odooCall<any[]>('product.attribute.value', 'read', {
+            ids: allValueIds,
+            fields: ['id', 'name'],
+          })
+        : [];
+      
+      const valueMap = new RecordMap(allValues);
+
       for (const line of lines) {
         const attrId = (line.attribute_id as [number, string] | undefined)?.[0];
-        const attr = attrId
-          ? await odooCall<Record<string, unknown>[]>(
-              'product.attribute',
-              'read',
-              {
-                ids: [attrId],
-                fields: ['id', 'name', 'display_type'],
-              },
-            )
-          : [];
-
+        const attrData = attrId ? attrMap.get(attrId) : null;
         const valueIds = (line.value_ids as number[] | undefined) || [];
-        const values = valueIds.length > 0
-            ? await odooCall<any[]>(
-                'product.attribute.value',
-                'read',
-                {
-                  ids: valueIds,
-                  fields: ['id', 'name'],
-                },
-              )
-            : [];
+        const values = valueIds.map(vid => valueMap.get(vid)).filter(Boolean);
 
-        const attrData = attr[0];
         attributeLines.push({
           id: (line.id as number) || 0,
           name: (attrData?.name as string) || '',
@@ -184,7 +194,7 @@ export async function getRestaurantProductDetails(id: number) {
         'read',
         {
           ids: comboIds,
-          fields: ['id', 'name', 'combo_item_ids'],
+          fields: ['id', 'name', 'combo_item_ids', 'max_item'],
         },
       )
 
@@ -202,12 +212,8 @@ export async function getRestaurantProductDetails(id: number) {
 
         const productsByComboId: Record<number, Array<{ productId: number; extraPrice: number }>> = {}
         for (const item of comboItems) {
-          const rawComboId = item.combo_id
-          const comboId = Array.isArray(rawComboId) ? rawComboId[0] : (rawComboId as number) || 0
-          
-          const rawProductId = item.product_id
-          const productId = Array.isArray(rawProductId) ? rawProductId[0] : (rawProductId as number) || 0
-          
+          const comboId = Array.isArray(item.combo_id) ? item.combo_id[0] : (item.combo_id as number) || 0
+          const productId = Array.isArray(item.product_id) ? item.product_id[0] : (item.product_id as number) || 0
           const extraPrice = (item.extra_price as number) || 0
           
           if (!productsByComboId[comboId]) {
@@ -220,10 +226,7 @@ export async function getRestaurantProductDetails(id: number) {
           ...new Set(Object.values(productsByComboId).flat().map(p => p.productId)),
         ]
 
-        const productDetailsMap: Record<
-          number,
-          { id: number; name: string; list_price: number }
-        > = {}
+        const productDetailsMap: Record<number, { id: number; name: string; list_price: number }> = {}
         if (allProductIds.length > 0) {
           const productsData = await odooCall<Record<string, unknown>[]>(
             'product.product',
@@ -260,7 +263,6 @@ export async function getRestaurantProductDetails(id: number) {
           comboLines.push({
             id: comboId,
             name: (combo.name as string) || `Option ${comboLines.length + 1}`,
-            combo_category_id: combo.combo_category_id,
             max_item: (combo.max_item || 1) as number,
             included_item: 0,
             required: true,

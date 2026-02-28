@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-export const revalidate = 3600;
+export const dynamic = 'force-dynamic';
 import { getRestaurantProducts, getRestaurantProductDetails } from '@/lib/odoo-products';
 import { ProductView } from '@/components/menu/ProductView';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -29,16 +29,8 @@ async function getProductDetails(id: number) {
   }
 }
 
-export async function generateStaticParams() {
-  try {
-    const data = await getRestaurantProducts({ limit: 1000 });
-    return (data.data || []).map((p: Product) => ({
-      slug: generateSlug(p.name),
-    }));
-  } catch (e) {
-    return [];
-  }
-}
+// generateStaticParams is removed because it attempts to fetch from Odoo at build-time,
+// which failed recently due to connectivity issues. force-dynamic ensures fresh data.
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
