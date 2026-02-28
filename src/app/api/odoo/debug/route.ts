@@ -14,11 +14,24 @@ export async function GET() {
     // Attempt a simple search_count to verify connectivity
     const pingStart = Date.now();
     const count = await odooCall<number>('res.company', 'search_count', { domain: [] });
+    
+    // Inspect models for Odoo 19 variants
+    const ptalFields = await odooCall<any>('product.template.attribute.line', 'fields_get', { 
+      attributes: ['value_ids'] 
+    });
+    const ptavFields = await odooCall<any>('product.template.attribute.value', 'fields_get', { 
+      attributes: ['name', 'price_extra', 'product_attribute_value_id'] 
+    });
+
     const pingEnd = Date.now();
 
     return NextResponse.json({
       status: 'success',
       config,
+      odoo19_inspect: {
+        ptal: ptalFields,
+        ptav: ptavFields
+      },
       ping: {
         success: true,
         latency: `${pingEnd - pingStart}ms`,

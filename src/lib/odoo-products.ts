@@ -3,10 +3,11 @@ import type { OdooRecord, Product } from './types';
 
 class RecordMap {
   private map: Map<number, any>;
-  constructor(records: any[]) {
-    this.map = new Map(records.map(r => [r.id, r]));
+  constructor(records: any) {
+    const list = Array.isArray(records) ? records : (records?.result || []);
+    this.map = new Map(list.map((r: any) => [Number(r.id), r]));
   }
-  get(id: number) { return this.map.get(id); }
+  get(id: any) { return this.map.get(Number(id)); }
 }
 
 export interface GetProductsOptions {
@@ -155,12 +156,12 @@ export async function getRestaurantProductDetails(id: number) {
       
       const attrMap = new RecordMap(attributesData);
 
-      // Batch fetch all attribute values
+      // Batch fetch all attribute values (Odoo 17 uses product.template.attribute.value for extras)
       const allValueIds = [...new Set(lines.flatMap(l => (l.value_ids as number[]) || []))];
       const allValues = allValueIds.length > 0
-        ? await odooCall<any[]>('product.attribute.value', 'read', {
+        ? await odooCall<any[]>('product.template.attribute.value', 'read', {
             ids: allValueIds,
-            fields: ['id', 'name'],
+            fields: ['id', 'name', 'price_extra', 'product_attribute_value_id'],
           })
         : [];
       
@@ -194,7 +195,7 @@ export async function getRestaurantProductDetails(id: number) {
         'read',
         {
           ids: comboIds,
-          fields: ['id', 'name', 'combo_item_ids', 'max_item'],
+          fields: ['id', 'name', 'combo_item_ids'],
         },
       )
 
