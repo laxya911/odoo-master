@@ -1,7 +1,4 @@
-
-"use client"
-
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardTitle, CardDescription } from '@/components/ui/card';
@@ -9,12 +6,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Utensils, Github, Mail, AlertCircle } from 'lucide-react';
+import { Utensils, Github, Mail, AlertCircle, Loader2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
-export default function AuthPage() {
+function AuthPageContent() {
     const { login, signup } = useAuth();
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -217,5 +214,17 @@ export default function AuthPage() {
                 </CardContent>
             </Card>
         </div>
+    );
+}
+
+export default function AuthPage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-[80vh] flex items-center justify-center">
+                <Loader2 className="w-10 h-10 animate-spin text-accent-gold" />
+            </div>
+        }>
+            <AuthPageContent />
+        </Suspense>
     );
 }
