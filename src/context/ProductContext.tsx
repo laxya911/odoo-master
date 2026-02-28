@@ -33,7 +33,14 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
         try {
             const response = await fetch('/api/odoo/restaurant/products?limit=100')
             if (!response.ok) {
-                throw new Error(`Failed to fetch products: ${response.statusText}`)
+                let errorMsg = response.statusText;
+                try {
+                    const errorData = await response.json();
+                    errorMsg = errorData.message || errorMsg || `Error ${response.status}`;
+                } catch {
+                    // Fallback to status text if not JSON
+                }
+                throw new Error(`Failed to fetch products: ${errorMsg}`)
             }
             const data = await response.json()
 

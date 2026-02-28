@@ -21,10 +21,13 @@ export async function odooCall<T>(
   const db = process.env.ODOO_DB || 'ram-db';
 
   if (!apiKey) {
-    throw new OdooClientError('Odoo API key (ODOO_API_KEY) is not configured.', 500);
+    const errorMsg = `Odoo API key (ODOO_API_KEY) is not configured in environment variables. Base URL: ${baseUrl}, DB: ${db}`;
+    console.error(`[odooCall] ${errorMsg}`);
+    throw new OdooClientError(errorMsg, 500);
   }
   
   const url = `${baseUrl}/json/2/${model}/${method}`;
+  console.log(`[odooCall] Calling: ${url}`);
   
   const headers = {
     'Content-Type': 'application/json',
@@ -75,7 +78,8 @@ export async function odooCall<T>(
       throw err;
     }
     const error = err as Error;
-    console.error("Network or other fetch error in odooCall:", error);
-    throw new OdooClientError(error.message || 'An unknown network error occurred.', 500);
+    const errorMsg = `Network or fetch error calling Odoo (${url}): ${error.message}`;
+    console.error(`[odooCall] ${errorMsg}`, error);
+    throw new OdooClientError(errorMsg, 500);
   }
 }
