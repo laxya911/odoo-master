@@ -124,9 +124,16 @@ const CheckoutDialog = memo(({
 
   // Stable signature of the cart to avoid re-fetching on minor UI changes (like typing in the form)
   const cartSignature = useMemo(() => {
-    const itemsRef = cartItems.map(i => `${i.id}:${i.qty}`).join('|');
-    return `${itemsRef}:${total}`;
+    const itemsRef = cartItems.map(i => `${i.id}:${i.quantity}`).join('|');
+    // Ensure total is consistently formatted to 2 decimals for the signature
+    return `${itemsRef}:${Number(total).toFixed(2)}`;
   }, [cartItems, total]);
+
+  // Memoize Stripe Elements options to prevent re-mounting the component tree on every keystroke
+  const stripeOptions = useMemo(() => ({
+    clientSecret: clientSecret || '',
+    appearance: { theme: 'stripe' as const }, // Or your custom theme
+  }), [clientSecret]);
 
   const isCreatingIntent = useRef(false);
 
@@ -149,7 +156,8 @@ const CheckoutDialog = memo(({
         body: JSON.stringify({
           cart: { items: cartItems, total, subtotal },
           customer: form.getValues(),
-          orderType: form.getValues('orderType')
+          orderType: form.getValues('orderType'),
+          notes: form.getValues('notes') // Explicitly pass notes at top level
         })
       })
         .then(res => res.json())
@@ -280,7 +288,7 @@ const CheckoutDialog = memo(({
                   </div>
                 ) : config.provider === 'stripe' ? (
                   clientSecret && stripePromise ? (
-                    <Elements stripe={stripePromise} options={{ clientSecret }}>
+                    <Elements stripe={stripePromise} options={stripeOptions}>
                       <CheckoutFormInner
                         cartItems={cartItems}
                         total={total}

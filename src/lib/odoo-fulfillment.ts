@@ -10,7 +10,7 @@ export async function fulfillOdooOrder(payload: OrderPayload, stripePaymentInten
   console.log('--- Fulfilling Odoo POS Order ---');
   console.log('Payload:', JSON.stringify(payload, null, 2));
   
-  const { orderLines: cartItems, customer, paymentMethod, notes } = payload;
+  const { orderLines: cartItems, customer, paymentMethod, notes, orderType } = payload;
 
   // 1 & 2. Find active POS session and its payment methods in one go if possible
   console.log('[Fulfillment] Searching for active POS session and config...');
@@ -127,6 +127,14 @@ export async function fulfillOdooOrder(payload: OrderPayload, stripePaymentInten
 
   const today = new Date().toISOString().split('T')[0];
 
+  // Map orderType to Odoo 19 pos.preset IDs (1: Takeout, 2: Dine In, 3: Delivery)
+  const presetIdMap: Record<string, number> = {
+    'takeout': 1,
+    'dine-in': 2,
+    'delivery': 3
+  };
+  const presetId = presetIdMap[orderType as string] || 3; // Default to Delivery
+
   const orderData = {
     name: `Online Order - ${stripePaymentIntentId ? stripePaymentIntentId.slice(-6) : 'WEB'}`,
     session_id: sessionId,
@@ -135,7 +143,7 @@ export async function fulfillOdooOrder(payload: OrderPayload, stripePaymentInten
       ...line,
       tax_ids: line.tax_ids.length > 0 ? [[6, 0, line.tax_ids]] : [],
       customer_note: line.customer_note || '', // Odoo 19 item note
-      note: line.customer_note || '' // Fallback
+      note: line.customer_note || '' // Fallback for various Odoo versions
     }]),
     to_invoice: true,
     amount_tax: orderBreakdown.amount_tax,
@@ -147,6 +155,7 @@ export async function fulfillOdooOrder(payload: OrderPayload, stripePaymentInten
     api_source: 'native_web',
     delivery_status: 'received', // POS "Delivery" tab visibility
     shipping_date: today,
+    preset_id: presetId, // Maps to Dine In / Takeout / Delivery tabs
     general_customer_note: notes || '', // Odoo 19 overall note
     api_order_notes: notes || '', // API specific
     internal_note: notes || '',
