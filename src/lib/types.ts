@@ -41,6 +41,9 @@ export type Product = OdooRecord & {
   combo_lines?: ComboLine[];
   pos_categ_ids?: number[];
   taxes_id?: number[];
+  // Odoo 19 Linkage for sub-products in combos
+  combo_id?: number
+  combo_item_id?: number
   details?: {
     description_sale?: string | false;
     attributes?: ProductAttribute[];
@@ -63,6 +66,8 @@ export type CartItemMeta = {
   combo_selections?: Array<{
     combo_line_id: number
     product_ids: number[]
+    combo_item_ids?: number[] // Linkage for expansion
+    extra_prices?: number[]   // Prices for expansion
   }>
   extras?: Product[]
   notes?: string
@@ -82,6 +87,10 @@ export type OrderLineItem = {
   quantity: number
   list_price: number
   notes?: string
+  // Odoo 19 Combo Linkage
+  combo_id?: number
+  combo_line_id?: number
+  combo_item_id?: number
 }
 
 export interface Paginated<T> {

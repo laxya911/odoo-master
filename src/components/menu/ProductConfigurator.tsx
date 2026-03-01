@@ -83,10 +83,24 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({ produc
 
   const handleAddToCart = () => {
     const attribute_value_ids = Object.values(configSelections).flat();
-    const combo_selections = Object.entries(comboSelections).map(([lineId, productIds]) => ({
-      combo_line_id: parseInt(lineId),
-      product_ids: productIds
-    })).filter(c => c.product_ids.length > 0);
+    const combo_selections = Object.entries(comboSelections).map(([lineId, productIds]) => {
+      const line = comboLines.find(l => l.id === parseInt(lineId));
+
+      const linkage = productIds.map(pid => {
+        const prodMatch = line?.products?.find(p => p.id === pid);
+        return {
+          combo_item_id: prodMatch?.combo_item_id,
+          extra_price: prodMatch?.list_price || 0
+        };
+      }).filter(l => l.combo_item_id !== undefined);
+
+      return {
+        combo_line_id: parseInt(lineId),
+        product_ids: productIds,
+        combo_item_ids: linkage.map(l => l.combo_item_id!),
+        extra_prices: linkage.map(l => l.extra_price)
+      };
+    }).filter(c => c.product_ids.length > 0);
 
     const productWithPrice: Product = {
       ...product,

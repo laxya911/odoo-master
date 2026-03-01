@@ -140,10 +140,16 @@ export async function fulfillOdooOrder(payload: OrderPayload, stripePaymentInten
     session_id: sessionId,
     partner_id: partnerId,
     lines: orderBreakdown.lines.map(line => [0, 0, {
-      ...line,
+      product_id: line.product_id,
+      qty: line.quantity,
+      price_unit: line.list_price,
       tax_ids: line.tax_ids.length > 0 ? [[6, 0, line.tax_ids]] : [],
       customer_note: line.customer_note || '', // Odoo 19 item note
-      note: line.customer_note || '' // Fallback for various Odoo versions
+      note: line.customer_note || '',         // Fallback for various POS displays
+      // Odoo 19 Combo Linkage
+      combo_id: line.combo_id,
+      combo_line_id: line.combo_line_id,
+      combo_item_id: line.combo_item_id
     }]),
     to_invoice: true,
     amount_tax: orderBreakdown.amount_tax,

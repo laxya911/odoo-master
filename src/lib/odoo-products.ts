@@ -207,20 +207,21 @@ export async function getRestaurantProductDetails(id: number) {
           'read',
           {
             ids: allComboItemIds,
-            fields: ['combo_id', 'product_id', 'extra_price'],
+            fields: ['id', 'combo_id', 'product_id', 'extra_price'],
           },
         )
 
-        const productsByComboId: Record<number, Array<{ productId: number; extraPrice: number }>> = {}
+        const productsByComboId: Record<number, Array<{ id: number; productId: number; extraPrice: number }>> = {}
         for (const item of comboItems) {
           const comboId = Array.isArray(item.combo_id) ? item.combo_id[0] : (item.combo_id as number) || 0
           const productId = Array.isArray(item.product_id) ? item.product_id[0] : (item.product_id as number) || 0
           const extraPrice = (item.extra_price as number) || 0
+          const id = (item.id as number) || 0
           
           if (!productsByComboId[comboId]) {
             productsByComboId[comboId] = []
           }
-          productsByComboId[comboId].push({ productId, extraPrice })
+          productsByComboId[comboId].push({ id, productId, extraPrice })
         }
 
         const allProductIds = [
@@ -256,7 +257,11 @@ export async function getRestaurantProductDetails(id: number) {
                 if (!prod) return null
                 return {
                     ...prod,
-                    list_price: (prod.list_price || 0) + item.extraPrice
+                    // In a combo, the product's list_price is ignored; only the combo's extra_price matters.
+                    list_price: item.extraPrice,
+                    // Linkage for expansion
+                    combo_id: comboId,
+                    combo_item_id: item.id
                 }
             })
             .filter((p): p is NonNullable<typeof p> => p !== null)

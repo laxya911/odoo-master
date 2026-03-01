@@ -1,5 +1,5 @@
 import { odooCall } from './odoo-client'
-import type { OrderLineItem } from './types'
+import type { OrderLineItem, CartItem } from './types'
 
 export async function calculateOrderTotal(orderLines: OrderLineItem[]) {
   // Fetch product tax relations for all products
@@ -85,20 +85,81 @@ export async function calculateOrderTotal(orderLines: OrderLineItem[]) {
 
     return {
       product_id: item.product_id,
-      qty,
-      price_unit: priceUnit,
+      quantity: item.quantity,
+      list_price: priceUnit,
       price_subtotal: priceExcl,
       price_subtotal_incl: lineTotal,
       tax_ids: applicableTaxIds,
       customer_note: item.notes || '',
+      // Odoo 19 Linkage
+      combo_id: item.combo_id,
+      combo_line_id: item.combo_line_id,
+      combo_item_id: item.combo_item_id
     }
   })
 
   return {
-    lines: processedLines,
+    lines: (processedLines as unknown) as Array<OrderLineItem & { price_subtotal: number; price_subtotal_incl: number; tax_ids: number[]; customer_note: string }>,
     amount_tax: Number(computedAmountTax.toFixed(2)),
     amount_total: Number(computedAmountTotal.toFixed(2)),
   }
+}
+
+/**
+ * Expands a list of CartItems into a flat list of OrderLineItems.
+ * Handles Odoo 19 combo expansion (1 parent line + N child lines).
+ */
+export function expandCartItems(cartItems: CartItem[]): OrderLineItem[] {
+  const expanded: OrderLineItem[] = [];
+
+  for (const item of cartItems) {
+    let subItemTotalExtra = 0;
+    const childLines: OrderLineItem[] = [];
+
+    // 1. Prepare Child Lines first to calculate total extra
+    if (item.meta?.combo_selections) {
+      for (const selection of item.meta.combo_selections) {
+        const productIds = selection.product_ids || [];
+        const comboItemIds = selection.combo_item_ids || [];
+        const extraPrices = selection.extra_prices || [];
+        const comboLineId = selection.combo_line_id;
+
+        for (let i = 0; i < productIds.length; i++) {
+          const pid = productIds[i];
+          const ciid = comboItemIds[i];
+          const price = extraPrices[i] || 0;
+
+          subItemTotalExtra += price;
+
+          childLines.push({
+            product_id: pid,
+            quantity: item.quantity,
+            list_price: price,
+            combo_id: item.product.id, // The parent product
+            combo_line_id: comboLineId,
+            combo_item_id: ciid,
+            notes: '' // Child lines usually don't have separate notes from the UI
+          });
+        }
+      }
+    }
+    
+    // 2. Add Parent Line
+    // Base price = Total - Sum(Extras)
+    const basePrice = Math.max(0, item.product.list_price - subItemTotalExtra);
+    
+    expanded.push({
+      product_id: item.product.id,
+      quantity: item.quantity,
+      list_price: basePrice,
+      notes: item.notes || item.meta?.notes || ''
+    });
+
+    // 3. Add Child Lines
+    expanded.push(...childLines);
+  }
+
+  return expanded;
 }
 
 export async function getCompanyCurrency(): Promise<string> {

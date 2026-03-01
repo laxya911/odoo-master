@@ -68,12 +68,9 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. Prepare lines for server-side trusted calculation
-    const orderLines: OrderLineItem[] = body.cart.items.map(item => ({
-      product_id: item.product.id,
-      quantity: item.quantity,
-      list_price: item.product.list_price,
-      notes: item.notes || ''
-    }));
+    // Expanding combos into parent/child lines to get accurate total
+    const { expandCartItems } = await import('@/lib/odoo-order-utils');
+    const orderLines = expandCartItems(body.cart.items);
 
     // 3. Calculate true total server-side
     const { amount_total } = await calculateOrderTotal(orderLines);
@@ -85,10 +82,25 @@ export async function POST(req: NextRequest) {
     const amountInSmallestUnit = toSmallestUnit(amount_total, currency);
 
     // 6. Create PaymentIntent
+    // Webhook needs to reconstruct the EXACT same expanded lines.
+    // We store the ORIGINAL cart items in metadata but compacted.
+    const compactItems = body.cart.items.map(item => ({
+      p: item.product.id,
+      q: item.quantity,
+      pr: item.product.list_price, // The total price (Base + Extras)
+      n: (item.notes || item.meta?.notes || '').slice(0, 30),
+      s: item.meta?.combo_selections?.map(s => ({
+        l: s.combo_line_id,
+        i: s.combo_item_ids,
+        p: s.product_ids,
+        e: s.extra_prices
+      }))
+    }));
+
     const paymentIntent = await stripe.paymentIntents.create({
       amount: amountInSmallestUnit,
       currency: currency,
-      customer: customerId, // Link Payment to the sync'd customer
+      customer: customerId,
       automatic_payment_methods: { enabled: true },
       metadata: {
         cart_id: body.cart_id || '',
@@ -100,12 +112,7 @@ export async function POST(req: NextRequest) {
         city: body.customer.city || '',
         zip: body.customer.zip || '',
         notes: body.notes || '',
-        // Store items in a more compact way or split if needed
-        line_items: JSON.stringify(orderLines.map(l => ({
-            p: l.product_id,
-            q: l.quantity,
-            n: l.notes ? l.notes.slice(0, 50) : '' // Compact names for notes
-        }))).slice(0, 500) 
+        line_items: JSON.stringify(compactItems).slice(0, 500) // Truncate safely for Stripe
       },
     });
 

@@ -3,7 +3,7 @@ import Stripe from 'stripe';
 import { fulfillOdooOrder } from '@/lib/odoo-fulfillment';
 import { odooCall } from '@/lib/odoo-client';
 import { fromSmallestUnit, getCompanyCurrency } from '@/lib/odoo-order-utils';
-import type { OrderPayload } from '@/lib/types';
+import type { OrderPayload, OrderLineItem } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,38 +72,73 @@ export async function POST(req: NextRequest) {
       }
 
       console.log('📦 [Webhook] Reconstructing order from metadata...');
-      // Reconstruct payload from trusted Stripe metadata we injected during payment intent creation.
-      let lineItems = [];
+      let compactItems = [];
       try {
-        lineItems = JSON.parse(metadata.line_items || '[]');
-        console.log(`📦 [Webhook] Parsed ${lineItems.length} line items.`);
+        compactItems = JSON.parse(metadata.line_items || '[]');
+        console.log(`📦 [Webhook] Parsed ${compactItems.length} base items.`);
       } catch (e) {
-        console.error('❌ [Webhook] Failed to parse line_items metadata. JSON was likely truncated by Stripe 500-char limit.', e);
-        console.error('Raw metadata.line_items:', metadata.line_items);
-        return NextResponse.json({ error: 'Metadata parse error. Potential truncation.' }, { status: 400 });
+        console.error('❌ [Webhook] Failed to parse line_items metadata.', e);
+        return NextResponse.json({ error: 'Metadata parse error.' }, { status: 400 });
       }
 
+      const orderLines: OrderLineItem[] = [];
       const currency = await getCompanyCurrency();
       const actualAmount = fromSmallestUnit(paymentIntent.amount, currency);
 
-      const fulfillmentPayload: OrderPayload = {
-        orderLines: lineItems.map((item: { p: number; q: number; n?: string }) => ({
+      for (const item of compactItems) {
+        let subItemTotalExtra = 0;
+        const childLines: OrderLineItem[] = [];
+
+        if (item.s && Array.isArray(item.s)) {
+          for (const s of item.s) {
+            const comboLineId = s.l;
+            const itemIds = s.i || [];
+            const productIds = s.p || [];
+            const prices = s.e || [];
+            
+            for (let i = 0; i < itemIds.length; i++) {
+              const ciid = itemIds[i];
+              const pid = productIds[i];
+              const price = prices[i] || 0;
+              subItemTotalExtra += price;
+
+              childLines.push({
+                product_id: pid,
+                quantity: item.q,
+                list_price: price,
+                combo_id: item.p,
+                combo_line_id: comboLineId,
+                combo_item_id: ciid,
+                notes: ''
+              });
+            }
+          }
+        }
+
+        // Add parent line (Base Price = Total Item Price - Sub-item Extras)
+        orderLines.push({
           product_id: item.p,
           quantity: item.q,
-          notes: item.n || '',
-          list_price: 0 
-        })),
+          list_price: Math.max(0, item.pr - subItemTotalExtra),
+          notes: item.n || ''
+        });
+        // Add child lines
+        orderLines.push(...childLines);
+      }
+
+      const fulfillmentPayload: OrderPayload = {
+        orderLines,
         customer: {
-          name: metadata.customer_name,
-          email: metadata.customer_email,
-          phone: metadata.customer_phone,
-          street: metadata.street,
-          city: metadata.city,
-          zip: metadata.zip,
+          name: metadata.customer_name || '',
+          email: metadata.customer_email || '',
+          phone: metadata.customer_phone || '',
+          street: metadata.street || '',
+          city: metadata.city || '',
+          zip: metadata.zip || '',
         },
         paymentMethod: 'stripe',
         orderType: (metadata.order_type as 'dine-in' | 'delivery' | 'takeout') || 'delivery',
-        notes: metadata.notes,
+        notes: metadata.notes || '',
         total: actualAmount
       };
 
