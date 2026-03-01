@@ -62,8 +62,7 @@
   }
 } */
 
-
-@import "tailwindcss";
+@import 'tailwindcss';
 
 /* :root {
   --background: #0A0A0A;
@@ -73,16 +72,12 @@
   --color-chili: #D32F2F;
 } */
 
-
-
-
-
 :root {
-  --background: #0A0A0A;
-  --foreground: #FFFFFF;
-  --color-primary: #0A0A0A;
+  --background: #0a0a0a;
+  --foreground: #ffffff;
+  --color-primary: #0a0a0a;
   --color-gold: #ab7d29;
-  --color-chili: #D32F2F;
+  --color-chili: #d32f2f;
   --radius: 0.65rem;
   /* --background: oklch(1 0 0);
   --foreground: oklch(0.141 0.005 285.823); */
@@ -156,8 +151,6 @@
   --sidebar-ring: oklch(0.408 0.123 38.172);
 }
 
-
-
 @theme inline {
   --color-primary: var(--color-primary);
   --color-accent-gold: var(--color-gold);
@@ -172,7 +165,7 @@ body {
   color: var(--foreground);
   font-family: var(--font-body);
   overflow-x: hidden;
-  font-feature-settings: "palt";
+  font-feature-settings: 'palt';
 }
 
 .glass {
@@ -220,12 +213,12 @@ body {
 }
 
 /* Form Input Styles - Consistent height across all devices */
-input[type="text"],
-input[type="email"],
-input[type="tel"],
-input[type="number"],
-input[type="date"],
-input[type="time"],
+input[type='text'],
+input[type='email'],
+input[type='tel'],
+input[type='number'],
+input[type='date'],
+input[type='time'],
 select,
 textarea {
   min-height: 48px;
@@ -242,8 +235,8 @@ textarea {
 }
 
 /* Fix iOS date/time input overflow */
-input[type="date"],
-input[type="time"] {
+input[type='date'],
+input[type='time'] {
   -webkit-appearance: none;
   -moz-appearance: none;
   appearance: none;
@@ -269,5 +262,16 @@ select {
 
 .food-card-hover:hover {
   transform: translateY(-4px);
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  box-shadow:
+    0 10px 25px -5px rgba(0, 0, 0, 0.1),
+    0 8px 10px -6px rgba(0, 0, 0, 0.1);
+}
+
+/* Hide Stripe Element floating settings link */
+.StripeElement__componentBox {
+  display: none !important;
+}
+
+iframe[title*='Stripe'] .StripeElement__componentBox {
+  display: none !important;
 }

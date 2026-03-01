@@ -144,8 +144,10 @@ export async function fulfillOdooOrder(payload: OrderPayload, stripePaymentInten
       qty: line.quantity,
       price_unit: line.list_price,
       tax_ids: line.tax_ids.length > 0 ? [[6, 0, line.tax_ids]] : [],
-      customer_note: line.customer_note || '', // Odoo 19 item note
-      note: line.customer_note || '',         // Fallback for various POS displays
+      // IMPORTANT: In Odoo 19, 'customer_note' on pos.order.line is a JSONB field
+      // that the POS tries to JSON.parse(). Sending plain text causes OwlError crash.
+      // Use ONLY the 'note' field for plain-text item notes.
+      note: line.customer_note || '',
       // Odoo 19 Combo Linkage
       combo_id: line.combo_id,
       combo_line_id: line.combo_line_id,
@@ -162,9 +164,9 @@ export async function fulfillOdooOrder(payload: OrderPayload, stripePaymentInten
     delivery_status: 'received', // POS "Delivery" tab visibility
     shipping_date: today,
     preset_id: presetId, // Maps to Dine In / Takeout / Delivery tabs
-    general_customer_note: notes || '', // Odoo 19 overall note
-    api_order_notes: notes || '', // API specific
-    internal_note: notes || '',
+    // General note is a plain text field at order level — safe to send as string
+    general_customer_note: typeof notes === 'string' ? notes : '',
+    internal_note: typeof notes === 'string' ? notes : '',
   };
 
   // 5. Create POS Order
