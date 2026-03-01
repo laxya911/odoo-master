@@ -125,6 +125,8 @@ export async function fulfillOdooOrder(payload: OrderPayload, stripePaymentInten
   const orderBreakdown = await calculateOrderTotal(cartItems);
   console.log('[Fulfillment] Totals:', { total: orderBreakdown.amount_total, tax: orderBreakdown.amount_tax });
 
+  const today = new Date().toISOString().split('T')[0];
+
   const orderData = {
     name: `Online Order - ${stripePaymentIntentId ? stripePaymentIntentId.slice(-6) : 'WEB'}`,
     session_id: sessionId,
@@ -132,21 +134,22 @@ export async function fulfillOdooOrder(payload: OrderPayload, stripePaymentInten
     lines: orderBreakdown.lines.map(line => [0, 0, {
       ...line,
       tax_ids: line.tax_ids.length > 0 ? [[6, 0, line.tax_ids]] : [],
-      customer_note: line.customer_note || '',
-      note: line.customer_note || '' // Odoo 19 line note fallback
+      customer_note: line.customer_note || '', // Odoo 19 item note
+      note: line.customer_note || '' // Fallback
     }]),
     to_invoice: true,
     amount_tax: orderBreakdown.amount_tax,
     amount_total: orderBreakdown.amount_total,
     amount_paid: 0,
     amount_return: 0,
-    source: 'mobile', // Odoo 19 specific
+    source: 'mobile', // Odoo 19 specific for self-order
     is_api_order: true,
     api_source: 'native_web',
-    general_customer_note: notes || '',
-    api_order_notes: notes || '', // Odoo 19 API specific
+    delivery_status: 'received', // POS "Delivery" tab visibility
+    shipping_date: today,
+    general_customer_note: notes || '', // Odoo 19 overall note
+    api_order_notes: notes || '', // API specific
     internal_note: notes || '',
-    note: undefined, // Explicitly remove invalid field
   };
 
   // 5. Create POS Order

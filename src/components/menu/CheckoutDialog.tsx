@@ -122,33 +122,32 @@ const CheckoutDialog = memo(({
     }
   }, [isOpen]);
 
-  // Memoize cart data to keep the dependency stable for the Payment Intent effect
-  const cartData = useMemo(() => ({
-    items: cartItems,
-    total,
-    subtotal
-  }), [cartItems, total, subtotal]);
+  // Stable signature of the cart to avoid re-fetching on minor UI changes (like typing in the form)
+  const cartSignature = useMemo(() => {
+    const itemsRef = cartItems.map(i => `${i.id}:${i.qty}`).join('|');
+    return `${itemsRef}:${total}`;
+  }, [cartItems, total]);
 
   const isCreatingIntent = useRef(false);
 
-  // Reset clientSecret if cart data changes to ensure correct amount
+  // Reset clientSecret ONLY if the actual cart contents or total change
   useEffect(() => {
     if (clientSecret) {
+      console.log("[CheckoutDialog] Cart changed, resetting Payment Intent...");
       setClientSecret(null);
     }
-  }, [cartData]);
+  }, [cartSignature]);
 
-  // Generate Payment Intent on unmount / config load
   useEffect(() => {
-    if (isOpen && config?.provider === 'stripe' && !clientSecret && cartData.items.length > 0 && !isCreatingIntent.current) {
-      console.log("[CheckoutDialog] Creating Payment Intent...");
+    if (isOpen && config?.provider === 'stripe' && !clientSecret && cartItems.length > 0 && !isCreatingIntent.current) {
+      console.log("[CheckoutDialog] Creating Payment Intent for cart signature:", cartSignature);
       isCreatingIntent.current = true;
 
       fetch('/api/payment/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          cart: cartData,
+          cart: { items: cartItems, total, subtotal },
           customer: form.getValues(),
           orderType: form.getValues('orderType')
         })
@@ -164,7 +163,7 @@ const CheckoutDialog = memo(({
           isCreatingIntent.current = false;
         });
     }
-  }, [isOpen, config, clientSecret, cartData, form]);
+  }, [isOpen, config, clientSecret, cartSignature]); // Removed 'form' as dependency
 
   const handleCheckoutSuccess = () => {
     // In strict webhook architecture, UI success means payment was captured/processed by SDK.
