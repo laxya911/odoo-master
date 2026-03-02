@@ -180,10 +180,8 @@ export async function fulfillOdooOrder(
     name: `Online Order - ${stripePaymentIntentId ? stripePaymentIntentId.slice(-6) : 'WEB'}`,
     session_id: sessionId,
     partner_id: partnerId,
-    lines: orderBreakdown.lines.map((line) => [
-      0,
-      0,
-      {
+    lines: orderBreakdown.lines.map((line) => {
+      const vals: any = {
         product_id: line.product_id,
         qty: line.quantity,
         price_unit: line.list_price,
@@ -192,12 +190,13 @@ export async function fulfillOdooOrder(
         // that the POS tries to JSON.parse(). Sending plain text causes OwlError crash.
         // Use ONLY the 'note' field for plain-text item notes.
         note: line.customer_note || '',
-        // Odoo 19 Combo Linkage
-        combo_id: line.combo_id,
-        combo_line_id: line.combo_line_id,
-        combo_item_id: line.combo_item_id,
-      },
-    ]),
+      }
+      if (line.combo_id) {
+        vals.combo_id = line.combo_id
+      }
+      // do not include combo_line_id/combo_item_id; they are not valid on pos.order.line
+      return [0, 0, vals]
+    }),
     to_invoice: true,
     amount_tax: orderBreakdown.amount_tax,
     amount_total: orderBreakdown.amount_total,
