@@ -208,6 +208,10 @@ export async function POST(req: NextRequest) {
       }
 
       console.log('🚀 [Webhook] Triggering Odoo Fulfillment...')
+      console.log(
+        '[Webhook] Fulfillment Payload:',
+        JSON.stringify(fulfillmentPayload, null, 2),
+      )
       try {
         const result = await fulfillOdooOrder(
           fulfillmentPayload,
@@ -215,8 +219,10 @@ export async function POST(req: NextRequest) {
         )
         console.log('✅ [Webhook] Fulfillment SUCCESS:', result.posReference)
       } catch (fulfillError) {
-        const err = fulfillError as Error
+        const err = fulfillError as any
         console.error('❌ [Webhook] Fulfillment FAILED:', err.message)
+        console.error('❌ [Webhook] Full Error:', err)
+        if (err.stack) console.error('❌ [Webhook] Stack:', err.stack)
         // We return 500 so Stripe retries if it's a transient failure
         return NextResponse.json(
           { error: `Fulfillment failed: ${err.message}` },
@@ -229,8 +235,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ received: true })
   } catch (error) {
-    const err = error as Error
+    const err = error as any
     console.error('❌ [Webhook] Critical internal error:', err.message)
+    console.error('❌ [Webhook] Full Error:', err)
+    if (err.stack) console.error('❌ [Webhook] Stack:', err.stack)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 },
