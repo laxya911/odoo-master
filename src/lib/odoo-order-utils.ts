@@ -168,16 +168,18 @@ export function expandCartItems(cartItems: CartItem[]): OrderLineItem[] {
       }
     }
 
-    // 2. Add Parent Line
+    // 2. Add Parent Line (only if it has a price or has no child lines)
     // Base price = Total - Sum(Extras)
     const basePrice = Math.max(0, item.product.list_price - subItemTotalExtra)
 
-    expanded.push({
-      product_id: item.product.id,
-      quantity: item.quantity,
-      list_price: basePrice,
-      notes: item.notes || item.meta?.notes || '',
-    })
+    if (basePrice > 0 || childLines.length === 0) {
+      expanded.push({
+        product_id: item.product.id,
+        quantity: item.quantity,
+        list_price: basePrice,
+        notes: item.notes || item.meta?.notes || '',
+      })
+    }
 
     // 3. Add Child Lines
     expanded.push(...childLines)

@@ -181,6 +181,7 @@ export async function fulfillOdooOrder(
     session_id: sessionId,
     partner_id: partnerId,
     lines: orderBreakdown.lines.map((line) => {
+      // Basic line dictionary
       const vals: any = {
         product_id: line.product_id,
         qty: line.quantity,
@@ -188,10 +189,10 @@ export async function fulfillOdooOrder(
         price_subtotal: line.price_subtotal || 0,
         price_subtotal_incl: line.price_subtotal_incl || 0,
         tax_ids: line.tax_ids.length > 0 ? [[6, 0, line.tax_ids]] : [],
+        customer_note: line.customer_note ? JSON.stringify(line.customer_note) : '',
         note: line.customer_note || '',
       }
-      // do not include combo_id/combo_line_id/combo_item_id; they cause FK violations
-      // combo logic is handled client-side; Odoo just needs the expanded line items
+      
       return [0, 0, vals]
     }),
     to_invoice: true,
