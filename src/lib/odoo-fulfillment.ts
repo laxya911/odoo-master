@@ -185,6 +185,8 @@ export async function fulfillOdooOrder(
         product_id: line.product_id,
         qty: line.quantity,
         price_unit: line.list_price,
+        price_subtotal: line.price_subtotal || 0,
+        price_subtotal_incl: line.price_subtotal_incl || 0,
         tax_ids: line.tax_ids.length > 0 ? [[6, 0, line.tax_ids]] : [],
         // IMPORTANT: In Odoo 19, 'customer_note' on pos.order.line is a JSONB field
         // that the POS tries to JSON.parse(). Sending plain text causes OwlError crash.
