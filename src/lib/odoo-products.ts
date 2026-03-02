@@ -228,14 +228,32 @@ export async function getRestaurantProductDetails(id: number) {
 
     // 3. Process Combo Lines
     if (comboIds.length > 0) {
-      const combos = await odooCall<Record<string, unknown>[]>(
-        'product.combo',
-        'read',
-        {
-          ids: comboIds,
-          fields: ['id', 'name', 'combo_item_ids'],
-        },
-      )
+      let combos: Record<string, unknown>[] = []
+      try {
+        combos = await odooCall<Record<string, unknown>[]>(
+          'product.combo',
+          'read',
+          {
+            ids: comboIds,
+            // use the actual field names from Odoo 19
+            fields: ['id', 'name', 'combo_item_ids', 'qty_max', 'qty_free'],
+          },
+        )
+      } catch (err) {
+        console.warn(
+          '[odoo-products] product.combo.read with qty_max/qty_included failed, retrying with safe fields',
+          err,
+        )
+        // Retry without the optional fields for older/modified Odoo schemas
+        combos = await odooCall<Record<string, unknown>[]>(
+          'product.combo',
+          'read',
+          {
+            ids: comboIds,
+            fields: ['id', 'name', 'combo_item_ids'],
+          },
+        )
+      }
 
       const allComboItemIds = combos.flatMap(
         (c) => (c.combo_item_ids as number[]) || [],
@@ -546,7 +564,7 @@ export async function getRestaurantProductDetails(id: number) {
                   if (!sp) return null
                   return {
                     ...sp,
-                    list_price: it.extraPrice,
+                    extra_price: it.extraPrice,
                     combo_item_id: it.id,
                   }
                 })
@@ -575,8 +593,8 @@ export async function getRestaurantProductDetails(id: number) {
 
               return {
                 ...prod,
-                // In a combo, the product's list_price is ignored; only the combo's extra_price matters.
-                list_price: item.extraPrice,
+                // The combo item extra price. Sub-products retain their base list_price if they exceed the free quota.
+                extra_price: item.extraPrice,
                 // Linkage for expansion
                 combo_id: comboId,
                 combo_item_id: item.id,
@@ -590,11 +608,15 @@ export async function getRestaurantProductDetails(id: number) {
             })
             .filter((p): p is NonNullable<typeof p> => p !== null)
 
+          // map the Odoo fields (qty_max, qty_included) to our combo line
+          const maxInt = Number((combo as any).qty_max || 1)
+          const includedInt = Number((combo as any).qty_free || 0)
+
           comboLines.push({
             id: comboId,
             name: (combo.name as string) || `Option ${comboLines.length + 1}`,
-            max_item: (combo.max_item || 1) as number,
-            included_item: 0,
+            max_item: isNaN(maxInt) ? 1 : maxInt,
+            included_item: isNaN(includedInt) ? 0 : includedInt,
             required: true,
             product_ids: itemDetails.map((d) => d.productId),
             products: productsList,

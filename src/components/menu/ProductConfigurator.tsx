@@ -62,8 +62,14 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
   >(() => {
     const initial: Record<string, number[]> = {}
     comboLines.forEach((line: ComboLine) => {
-      // For Combo lines (radio-like), default to first option if required
-      if (line.required && line.product_ids.length > 0) {
+      // For Combo lines, if it's single-select and required we can prefill the first
+      // item to simplify the UX. For multi-select (max_item>1) we start empty so the
+      // user must actively make all selections.
+      if (
+        line.required &&
+        line.product_ids.length > 0 &&
+        (line.max_item || 1) === 1
+      ) {
         initial[line.id] = [line.product_ids[0]]
       } else {
         initial[line.id] = []
@@ -91,7 +97,20 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
     for (const line of comboLines) {
       if (line.required) {
         const selectedIds = comboSelections[line.id] || []
-        if (selectedIds.length === 0) return false
+        const qtyFree = line.included_item || 0
+        const qtyMax = line.max_item || 1
+
+        // If qty_free > 0, user must select AT LEAST that many (and up to qty_max)
+        // If qty_free == 0, user must select EXACTLY qty_max
+        if (qtyFree > 0) {
+          if (selectedIds.length < qtyFree || selectedIds.length > qtyMax) {
+            return false
+          }
+        } else {
+          if (selectedIds.length !== qtyMax) {
+            return false
+          }
+        }
       }
     }
 
@@ -129,16 +148,28 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
       )
     })
 
-    // Add combo prices (top-level)
+    // Add combo prices (top-level), respecting qty_free for free items
     comboLines.forEach((line: ComboLine) => {
       const selectedIds = comboSelections[line.id] || []
-      line.products?.forEach((p: Product) => {
-        if (selectedIds.includes(p.id)) {
-          total += p.list_price || 0
+      const qtyFree = line.included_item || 0
+
+      // Iterate through selected IDs in selection order (not product definition order)
+      // so we can apply free quota to the first N selections
+      selectedIds.forEach((selectedPid, selectionIndex) => {
+        const p = line.products?.find((prod) => prod.id === selectedPid)
+        if (p) {
+          total += p.extra_price || 0
+          // If this selection index is within the free quota, it's free
+          if (selectionIndex < qtyFree) {
+            // This item is free - don't add its base price
+          } else {
+            // Beyond free quota - charge full price
+            total += p.list_price || 0
+          }
 
           // Add attribute prices for this combo item
           p.attributes?.forEach((attr: ProductAttribute) => {
-            const attrKey = `${line.id}-${p.id}-attr`
+            const attrKey = `${line.id}-${selectedPid}-attr`
             const selectedAttrIds =
               comboItemAttributes[attrKey]?.[attr.id] || []
             attr.values.forEach(
@@ -151,12 +182,18 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
 
           // Add nested sub-combo prices
           if (p.combo_lines) {
-            const nestedKey = `${line.id}-${p.id}`
+            const nestedKey = `${line.id}-${selectedPid}`
             const subSels = nestedSelections[nestedKey] || {}
             p.combo_lines.forEach((subLine: ComboLine) => {
               const subSelectedIds = subSels[subLine.id] || []
               subLine.products?.forEach((sp: Product) => {
-                if (subSelectedIds.includes(sp.id)) total += sp.list_price || 0
+                if (subSelectedIds.includes(sp.id)) {
+                  total += sp.extra_price || 0
+                  const spIndex = subSelectedIds.indexOf(sp.id)
+                  if (spIndex >= (subLine.included_item || 0)) {
+                    total += sp.list_price || 0
+                  }
+                }
               })
             })
           }
@@ -205,7 +242,7 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                     const sp = subLine?.products?.find((s) => s.id === spid)
                     return {
                       combo_item_id: sp?.combo_item_id,
-                      extra_price: sp?.list_price || 0,
+                      extra_price: sp?.extra_price || 0,
                     }
                   })
                   .filter((l) => l.combo_item_id !== undefined)
@@ -221,7 +258,7 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
 
             return {
               combo_item_id: prodMatch?.combo_item_id,
-              extra_price: prodMatch?.list_price || 0,
+              extra_price: prodMatch?.extra_price || 0,
               attribute_value_ids:
                 combo_item_attribute_ids.length > 0
                   ? combo_item_attribute_ids
@@ -237,6 +274,7 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
           product_ids: productIds,
           combo_item_ids: linkage.map((l) => l.combo_item_id!),
           extra_prices: linkage.map((l) => l.extra_price),
+          qty_free: line?.included_item || 0,
           combo_item_attributes: linkage
             .map((l) => l.attribute_value_ids)
             .filter(Boolean),
@@ -343,11 +381,10 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                                 }
                               })
                             }}
-                            className={`px-5 py-2 rounded-2xl text-[10px] font-bold tracking-widest uppercase transition-all border cursor-pointer h-10 ${
-                              isSelected
-                                ? 'bg-accent-gold border-accent-gold text-primary shadow-lg shadow-accent-gold/20'
-                                : 'bg-white/5 border-white/10 text-white/70'
-                            }`}
+                            className={`px-5 py-2 rounded-2xl text-[10px] font-bold tracking-widest uppercase transition-all border cursor-pointer h-10 ${isSelected
+                              ? 'bg-accent-gold border-accent-gold text-primary shadow-lg shadow-accent-gold/20'
+                              : 'bg-white/5 border-white/10 text-white/70'
+                              }`}
                           >
                             {val.name}{' '}
                             {val.price_extra
@@ -365,17 +402,29 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
             {!isLoadingDetails &&
               comboLines.map((line: ComboLine) => (
                 <div key={line.id} className='space-y-4'>
-                  <Label className='mb-0 text-white/70'>
-                    {line.name}{' '}
-                    {line.required && (
-                      <span className='text-accent-chili'>*</span>
-                    )}
-                    {comboSelections[line.id]?.length === 0 &&
-                      line.required && (
-                        <span className='text-[10px] text-accent-chili ml-2 font-normal italic'>
-                          (Selection Required)
-                        </span>
+                  <Label className='mb-0 text-white/70 flex items-baseline justify-between'>
+                    <div>
+                      {line.name}{' '}
+                      {line.required && (
+                        <span className='text-accent-chili'>*</span>
                       )}
+                    </div>
+                    <div className='text-sm text-white/60'>
+                      {/* Show selected / free count when available */}
+                      {(() => {
+                        const selectedCount = (comboSelections[line.id] || [])
+                          .length
+                        if ((line.included_item || 0) > 0) {
+                          // 'included_item' now maps to qty_free from Odoo
+                          return `${selectedCount}/${line.included_item} free`
+                        }
+                        // Fallback show max if >1
+                        if ((line.max_item || 1) > 1) {
+                          return `${selectedCount}/${line.max_item}`
+                        }
+                        return null
+                      })()}
+                    </div>
                   </Label>
                   <div className='flex flex-col gap-4'>
                     <div className='flex flex-wrap gap-2'>
@@ -388,12 +437,29 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                             <button
                               onClick={() => {
                                 setComboSelections((prev) => {
-                                  const isAlreadySelected = prev[
-                                    line.id
-                                  ]?.includes(prod.id)
-                                  if (isAlreadySelected) return prev // Avoid unnecessary re-selections
+                                  const current = prev[line.id] || []
+                                  const max = line.max_item || 1
+                                  const isMulti = max > 1
 
-                                  // Handle single select (assuming radio for combos)
+                                  if (isMulti) {
+                                    // toggle membership, but do not exceed max
+                                    if (current.includes(prod.id)) {
+                                      return {
+                                        ...prev,
+                                        [line.id]: current.filter(
+                                          (id) => id !== prod.id,
+                                        ),
+                                      }
+                                    }
+                                    if (current.length >= max) return prev
+                                    return {
+                                      ...prev,
+                                      [line.id]: [...current, prod.id],
+                                    }
+                                  }
+
+                                  // single-select behavior
+                                  if (current.includes(prod.id)) return prev
                                   return { ...prev, [line.id]: [prod.id] }
                                 })
 
@@ -451,15 +517,14 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                                   })
                                 }
                               }}
-                              className={`px-5 py-2 rounded-2xl text-[10px] font-bold tracking-widest uppercase transition-all border cursor-pointer h-10 ${
-                                isSelected
-                                  ? 'bg-accent-gold border-accent-gold text-primary shadow-lg shadow-accent-gold/20'
-                                  : 'bg-white/5 border-white/10 text-white/70'
-                              }`}
+                              className={`px-5 py-2 rounded-2xl text-[10px] font-bold tracking-widest uppercase transition-all border cursor-pointer h-10 ${isSelected
+                                ? 'bg-accent-gold border-accent-gold text-primary shadow-lg shadow-accent-gold/20'
+                                : 'bg-white/5 border-white/10 text-white/70'
+                                }`}
                             >
                               {prod.name}{' '}
-                              {prod.list_price
-                                ? `(+${formatPrice(prod.list_price)})`
+                              {prod.extra_price
+                                ? `(+${formatPrice(prod.extra_price)})`
                                 : ''}
                             </button>
                           </div>
@@ -517,11 +582,10 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                                               }
                                             })
                                           }}
-                                          className={`px-4 py-2 rounded-xl text-[9px] font-bold tracking-widest uppercase transition-all border cursor-pointer h-9 ${
-                                            isSelected
-                                              ? 'bg-accent-gold/80 border-accent-gold text-primary shadow-inner'
-                                              : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'
-                                          }`}
+                                          className={`px-4 py-2 rounded-xl text-[9px] font-bold tracking-widest uppercase transition-all border cursor-pointer h-9 ${isSelected
+                                            ? 'bg-accent-gold/80 border-accent-gold text-primary shadow-inner'
+                                            : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'
+                                            }`}
                                         >
                                           {val.name}{' '}
                                           {val.price_extra
@@ -581,15 +645,14 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                                           }
                                         })
                                       }}
-                                      className={`px-4 py-2 rounded-xl text-[9px] font-bold tracking-widest uppercase transition-all border cursor-pointer h-9 ${
-                                        subIsSelected
-                                          ? 'bg-accent-gold/80 border-accent-gold text-primary shadow-inner'
-                                          : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'
-                                      }`}
+                                      className={`px-4 py-2 rounded-xl text-[9px] font-bold tracking-widest uppercase transition-all border cursor-pointer h-9 ${subIsSelected
+                                        ? 'bg-accent-gold/80 border-accent-gold text-primary shadow-inner'
+                                        : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'
+                                        }`}
                                     >
                                       {subProd.name}{' '}
-                                      {subProd.list_price
-                                        ? `(+${formatPrice(subProd.list_price)})`
+                                      {subProd.extra_price
+                                        ? `(+${formatPrice(subProd.extra_price)})`
                                         : ''}
                                     </button>
                                   )
@@ -643,11 +706,10 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                 variant='secondary'
                 onClick={handleAddToCart}
                 disabled={!session.isOpen || !isConfigValid}
-                className={`grow py-4 md:px-10 border-accent-gold transition-all ${
-                  !isConfigValid
-                    ? 'bg-neutral-800 border-neutral-700 text-white/30'
-                    : 'bg-accent-gold border-accent-gold text-primary hover:scale-[1.02]'
-                }`}
+                className={`grow py-4 md:px-10 border-accent-gold transition-all ${!isConfigValid
+                  ? 'bg-neutral-800 border-neutral-700 text-white/30'
+                  : 'bg-accent-gold border-accent-gold text-primary hover:scale-[1.02]'
+                  }`}
               >
                 {!session.isOpen
                   ? 'Store Closed'

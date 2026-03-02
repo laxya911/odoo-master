@@ -192,6 +192,8 @@ export const CheckoutDialog = memo(
       const suffix = clientSecret ? clientSecret.split('_')[1]?.slice(-6) : null
       if (suffix) setSavedPiSuffix(suffix)
 
+      // clear clientSecret so next order will create a fresh payment intent
+      setClientSecret(null)
       setCurrentStep('success')
       clearCart()
     }
@@ -365,7 +367,7 @@ export const CheckoutDialog = memo(
                 </div>
 
                 {/* Content Area */}
-                <div className='flex-1 overflow-y-auto px-8 py-6 custom-scrollbar'>
+                <div className='flex-1 overflow-y-auto px-8 py-6 custom-scrollbar bg-white'>
                   {configLoading ? (
                     <div className='flex flex-col items-center justify-center h-full space-y-4'>
                       <Loader2 className='w-8 h-8 animate-spin text-accent-gold' />

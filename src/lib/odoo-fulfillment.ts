@@ -188,15 +188,10 @@ export async function fulfillOdooOrder(
         price_subtotal: line.price_subtotal || 0,
         price_subtotal_incl: line.price_subtotal_incl || 0,
         tax_ids: line.tax_ids.length > 0 ? [[6, 0, line.tax_ids]] : [],
-        // IMPORTANT: In Odoo 19, 'customer_note' on pos.order.line is a JSONB field
-        // that the POS tries to JSON.parse(). Sending plain text causes OwlError crash.
-        // Use ONLY the 'note' field for plain-text item notes.
         note: line.customer_note || '',
       }
-      if (line.combo_id) {
-        vals.combo_id = line.combo_id
-      }
-      // do not include combo_line_id/combo_item_id; they are not valid on pos.order.line
+      // do not include combo_id/combo_line_id/combo_item_id; they cause FK violations
+      // combo logic is handled client-side; Odoo just needs the expanded line items
       return [0, 0, vals]
     }),
     to_invoice: true,
@@ -220,7 +215,7 @@ export async function fulfillOdooOrder(
     `🚀 [Fulfillment] Creating POS Order for Partner ID: ${partnerId}...`,
   )
   console.log('[Fulfillment] Order Data:', JSON.stringify(orderData, null, 2))
-  let orderId: number
+  let orderId: number | null = null
   try {
     const orderIds = await odooCall<number[]>('pos.order', 'create', {
       vals_list: [orderData],
@@ -236,6 +231,7 @@ export async function fulfillOdooOrder(
     console.error('Error Message:', e.message)
     console.error('Error Details:', e.odooError || e)
     if (e.stack) console.error('Stack:', e.stack)
+    // nothing to cleanup yet since orderId is null
     throw e
   }
 
@@ -245,7 +241,7 @@ export async function fulfillOdooOrder(
   )
   try {
     await odooCall('pos.order', 'add_payment', {
-      ids: [orderId],
+      ids: [orderId!],
       data: {
         pos_order_id: orderId,
         amount: orderBreakdown.amount_total,
@@ -257,6 +253,31 @@ export async function fulfillOdooOrder(
     console.error('❌ [Fulfillment] Failed to add payment to order:', e.message)
     console.error('Error Details:', e.odooError || e)
     if (e.stack) console.error('Stack:', e.stack)
+    // attempt cleanup of half-created order
+    if (orderId) {
+      try {
+        // try deleting first, if it fails archive/cancel as fallback
+        await odooCall('pos.order', 'unlink', { ids: [orderId] })
+        console.log('[Fulfillment] Rolled back partial order by unlinking.')
+      } catch (cleanupErr) {
+        console.warn(
+          '[Fulfillment] Unable to unlink order during rollback, attempting cancel/archive',
+          cleanupErr,
+        )
+        try {
+          await odooCall('pos.order', 'write', {
+            ids: [orderId],
+            vals: { active: false, state: 'cancel' },
+          })
+          console.log('[Fulfillment] Order archived/cancelled during rollback.')
+        } catch (archiveErr) {
+          console.error(
+            '[Fulfillment] Cleanup failed on order after payment error:',
+            archiveErr,
+          )
+        }
+      }
+    }
     throw e
   }
 

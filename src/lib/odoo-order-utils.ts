@@ -4,34 +4,47 @@ import type { OrderLineItem, CartItem } from './types'
 export async function calculateOrderTotal(orderLines: OrderLineItem[]) {
   // Fetch product tax relations for all products
   const productIds = Array.from(new Set(orderLines.map((i) => i.product_id)))
-  const productsWithData = await odooCall<Array<{ id: number; taxes_id: number[]; list_price: number }>>(
-    'product.product',
-    'read',
-    {
-      ids: productIds,
-      fields: ['id', 'taxes_id', 'list_price'],
-    },
-  )
+  const productsWithData = await odooCall<
+    Array<{ id: number; taxes_id: number[]; list_price: number }>
+  >('product.product', 'read', {
+    ids: productIds,
+    fields: ['id', 'taxes_id', 'list_price'],
+  })
 
-  const productDataMap: Record<number, { taxes_id: number[]; list_price: number }> = {}
+  const productDataMap: Record<
+    number,
+    { taxes_id: number[]; list_price: number }
+  > = {}
   for (const prod of productsWithData) {
     productDataMap[prod.id] = {
       taxes_id: prod.taxes_id || [],
-      list_price: prod.list_price || 0
+      list_price: prod.list_price || 0,
     }
   }
 
   // Collect all tax ids used and fetch tax records
-  const allTaxIds = Array.from(new Set(Object.values(productDataMap).flatMap(p => p.taxes_id)))
+  const allTaxIds = Array.from(
+    new Set(Object.values(productDataMap).flatMap((p) => p.taxes_id)),
+  )
   const taxes =
     allTaxIds.length > 0
-      ? await odooCall<Array<{ id: number; amount: number; amount_type: string; price_include: boolean }>>('account.tax', 'read', {
+      ? await odooCall<
+          Array<{
+            id: number
+            amount: number
+            amount_type: string
+            price_include: boolean
+          }>
+        >('account.tax', 'read', {
           ids: allTaxIds,
           fields: ['id', 'amount', 'amount_type', 'price_include'],
         })
       : []
-      
-  const taxById: Record<number, { id: number; amount: number; amount_type: string; price_include: boolean }> = {}
+
+  const taxById: Record<
+    number,
+    { id: number; amount: number; amount_type: string; price_include: boolean }
+  > = {}
   for (const t of taxes) {
     taxById[t.id] = t
   }
@@ -41,38 +54,42 @@ export async function calculateOrderTotal(orderLines: OrderLineItem[]) {
 
   const processedLines = orderLines.map((item) => {
     const qty = item.quantity
-    const pData = productDataMap[item.product_id] || { taxes_id: [], list_price: 0 }
+    const pData = productDataMap[item.product_id] || {
+      taxes_id: [],
+      list_price: 0,
+    }
     const applicableTaxIds = pData.taxes_id
-    
+
     let totalExcludedRate = 0
     for (const tid of applicableTaxIds) {
       const tx = taxById[tid]
       if (tx && !tx.price_include) {
-          totalExcludedRate += tx.amount / 100
+        totalExcludedRate += tx.amount / 100
       }
     }
 
-    // Use fetched list_price if item.list_price is missing/zero
-    let priceUnit = item.list_price || pData.list_price
+    // Use fetched list_price if item.list_price is undefined or null
+    // (we must respect a legitimate zero price, so avoid `||` which treats 0 as falsy)
+    let priceUnit = item.list_price ?? pData.list_price
     if (totalExcludedRate > 0) {
-        priceUnit = priceUnit / (1 + totalExcludedRate)
-        priceUnit = Number(priceUnit.toFixed(2))
+      priceUnit = priceUnit / (1 + totalExcludedRate)
+      priceUnit = Number(priceUnit.toFixed(2))
     }
-    
+
     const subtotal = priceUnit * qty
     let lineTax = 0
-    let priceExcl = subtotal 
+    let priceExcl = subtotal
 
     for (const tid of applicableTaxIds) {
       const tx = taxById[tid]
       if (!tx) continue
-      
+
       if (tx.price_include) {
-         const rate = tx.amount / 100
-         priceExcl = priceExcl / (1 + rate)
-         lineTax += priceExcl * rate
+        const rate = tx.amount / 100
+        priceExcl = priceExcl / (1 + rate)
+        lineTax += priceExcl * rate
       } else {
-         lineTax += subtotal * (tx.amount / 100)
+        lineTax += subtotal * (tx.amount / 100)
       }
     }
 
@@ -94,12 +111,19 @@ export async function calculateOrderTotal(orderLines: OrderLineItem[]) {
       // Odoo 19 Linkage
       combo_id: item.combo_id,
       combo_line_id: item.combo_line_id,
-      combo_item_id: item.combo_item_id
+      combo_item_id: item.combo_item_id,
     }
   })
 
   return {
-    lines: (processedLines as unknown) as Array<OrderLineItem & { price_subtotal: number; price_subtotal_incl: number; tax_ids: number[]; customer_note: string }>,
+    lines: processedLines as unknown as Array<
+      OrderLineItem & {
+        price_subtotal: number
+        price_subtotal_incl: number
+        tax_ids: number[]
+        customer_note: string
+      }
+    >,
     amount_tax: Number(computedAmountTax.toFixed(2)),
     amount_total: Number(computedAmountTotal.toFixed(2)),
   }
@@ -110,26 +134,26 @@ export async function calculateOrderTotal(orderLines: OrderLineItem[]) {
  * Handles Odoo 19 combo expansion (1 parent line + N child lines).
  */
 export function expandCartItems(cartItems: CartItem[]): OrderLineItem[] {
-  const expanded: OrderLineItem[] = [];
+  const expanded: OrderLineItem[] = []
 
   for (const item of cartItems) {
-    let subItemTotalExtra = 0;
-    const childLines: OrderLineItem[] = [];
+    let subItemTotalExtra = 0
+    const childLines: OrderLineItem[] = []
 
     // 1. Prepare Child Lines first to calculate total extra
     if (item.meta?.combo_selections) {
       for (const selection of item.meta.combo_selections) {
-        const productIds = selection.product_ids || [];
-        const comboItemIds = selection.combo_item_ids || [];
-        const extraPrices = selection.extra_prices || [];
-        const comboLineId = selection.combo_line_id;
+        const productIds = selection.product_ids || []
+        const comboItemIds = selection.combo_item_ids || []
+        const extraPrices = selection.extra_prices || []
+        const comboLineId = selection.combo_line_id
 
         for (let i = 0; i < productIds.length; i++) {
-          const pid = productIds[i];
-          const ciid = comboItemIds[i];
-          const price = extraPrices[i] || 0;
+          const pid = productIds[i]
+          const ciid = comboItemIds[i]
+          const price = extraPrices[i] || 0
 
-          subItemTotalExtra += price;
+          subItemTotalExtra += price
 
           childLines.push({
             product_id: pid,
@@ -138,28 +162,28 @@ export function expandCartItems(cartItems: CartItem[]): OrderLineItem[] {
             combo_id: item.product.id, // The parent product
             combo_line_id: comboLineId,
             combo_item_id: ciid,
-            notes: '' // Child lines usually don't have separate notes from the UI
-          });
+            notes: '', // Child lines usually don't have separate notes from the UI
+          })
         }
       }
     }
-    
+
     // 2. Add Parent Line
     // Base price = Total - Sum(Extras)
-    const basePrice = Math.max(0, item.product.list_price - subItemTotalExtra);
-    
+    const basePrice = Math.max(0, item.product.list_price - subItemTotalExtra)
+
     expanded.push({
       product_id: item.product.id,
       quantity: item.quantity,
       list_price: basePrice,
-      notes: item.notes || item.meta?.notes || ''
-    });
+      notes: item.notes || item.meta?.notes || '',
+    })
 
     // 3. Add Child Lines
-    expanded.push(...childLines);
+    expanded.push(...childLines)
   }
 
-  return expanded;
+  return expanded
 }
 
 export async function getCompanyCurrency(): Promise<string> {
@@ -169,9 +193,11 @@ export async function getCompanyCurrency(): Promise<string> {
       fields: ['currency_id'],
       limit: 1,
     })
-    
+
     if (companies && companies.length > 0) {
-      const currencyId = Array.isArray(companies[0].currency_id) ? companies[0].currency_id[0] : null
+      const currencyId = Array.isArray(companies[0].currency_id)
+        ? companies[0].currency_id[0]
+        : null
       if (currencyId) {
         const currencies = await odooCall<any[]>('res.currency', 'read', {
           ids: [currencyId],
@@ -193,27 +219,41 @@ export async function getCompanyCurrency(): Promise<string> {
  * @see https://stripe.com/docs/currencies#zero-decimal
  */
 const ZERO_DECIMAL_CURRENCIES = [
-  'bif', 'clp', 'djf', 'gnf', 'jpy', 'kmf', 'mga', 'pyg', 'rwf', 'ugx', 'vnd', 'vuv', 'xaf', 'xof', 'xpf'
-];
+  'bif',
+  'clp',
+  'djf',
+  'gnf',
+  'jpy',
+  'kmf',
+  'mga',
+  'pyg',
+  'rwf',
+  'ugx',
+  'vnd',
+  'vuv',
+  'xaf',
+  'xof',
+  'xpf',
+]
 
 /**
  * Converts a decimal amount to the smallest unit for Stripe (e.g., cents for USD, yen for JPY).
  */
 export function toSmallestUnit(amount: number, currency: string): number {
-  const isZeroDecimal = ZERO_DECIMAL_CURRENCIES.includes(currency.toLowerCase());
+  const isZeroDecimal = ZERO_DECIMAL_CURRENCIES.includes(currency.toLowerCase())
   if (isZeroDecimal) {
-    return Math.round(amount);
+    return Math.round(amount)
   }
-  return Math.round(amount * 100);
+  return Math.round(amount * 100)
 }
 
 /**
  * Converts an amount in Stripe's smallest unit back to a decimal amount.
  */
 export function fromSmallestUnit(amount: number, currency: string): number {
-  const isZeroDecimal = ZERO_DECIMAL_CURRENCIES.includes(currency.toLowerCase());
+  const isZeroDecimal = ZERO_DECIMAL_CURRENCIES.includes(currency.toLowerCase())
   if (isZeroDecimal) {
-    return amount;
+    return amount
   }
-  return amount / 100;
+  return amount / 100
 }

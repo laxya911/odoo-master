@@ -113,6 +113,7 @@ export async function POST(req: NextRequest) {
         i: s.combo_item_ids,
         p: s.product_ids,
         e: s.extra_prices,
+        q_f: s.qty_free || 0,
       })),
     }))
 

@@ -1,4 +1,8 @@
-export type OdooDomainTriplet = [string, string, string | number | boolean | number[] | string[]]
+export type OdooDomainTriplet = [
+  string,
+  string,
+  string | number | boolean | number[] | string[],
+]
 export type OdooDomain = (string | OdooDomainTriplet)[]
 
 export type OdooRecord = {
@@ -18,17 +22,20 @@ export interface ProductAttribute {
 }
 
 export type ComboLine = {
-  id: number;
-  name: string;
-  product_ids: number[];
-  products?: Product[];
-  required?: boolean;
+  id: number
+  name: string
+  product_ids: number[]
+  products?: Product[]
+  required?: boolean
+  max_item?: number // maximum selectable items for this combo line
+  included_item?: number // how many items are included (free) in base price
 }
 
 export type Product = OdooRecord & {
   name: string
   list_price: number
   price?: number // Fallback
+  extra_price?: number // Combo-specific extra charge
   image_256: string | false
   attribute_line_ids: number[]
   category?: string
@@ -36,23 +43,28 @@ export type Product = OdooRecord & {
   description_sale?: string | false
   product_tag_ids?: number[]
   write_date?: string
-  attributes?: ProductAttribute[];
-  combo_ids?: number[];
-  combo_lines?: ComboLine[];
-  pos_categ_ids?: number[];
-  taxes_id?: number[];
+  attributes?: ProductAttribute[]
+  combo_ids?: number[]
+  combo_lines?: ComboLine[]
+  pos_categ_ids?: number[]
+  taxes_id?: number[]
   // Odoo 19 Linkage for sub-products in combos
   combo_id?: number
   combo_item_id?: number
   details?: {
-    description_sale?: string | false;
-    attributes?: ProductAttribute[];
-    combo_lines?: ComboLine[];
-    [key: string]: unknown;
+    description_sale?: string | false
+    attributes?: ProductAttribute[]
+    combo_lines?: ComboLine[]
+    [key: string]: unknown
   }
 }
 
-export type OrderStatus = 'received' | 'preparing' | 'ready' | 'delivering' | 'delivered';
+export type OrderStatus =
+  | 'received'
+  | 'preparing'
+  | 'ready'
+  | 'delivering'
+  | 'delivered'
 
 export type PosCategory = {
   id: number
@@ -67,7 +79,8 @@ export type CartItemMeta = {
     combo_line_id: number
     product_ids: number[]
     combo_item_ids?: number[] // Linkage for expansion
-    extra_prices?: number[]   // Prices for expansion
+    extra_prices?: number[] // Prices for expansion
+    qty_free?: number // How many items in this combo line are free
   }>
   extras?: Product[]
   notes?: string
@@ -101,7 +114,7 @@ export interface Paginated<T> {
     offset: number
     model: string
     domain: OdooDomain
-    tags?: Record<number, { id: number, name: string, color?: number }>
+    tags?: Record<number, { id: number; name: string; color?: number }>
     categories?: PosCategory[]
   }
 }
@@ -162,32 +175,44 @@ export type OrderPayload = {
 }
 
 // Payment Architecture & Webhook Event DTOs
-export type PaymentProvider = 'stripe' | 'razorpay' | 'paypal' | 'demo_online' | 'cash';
-export type StripePaymentStatus = 'requires_payment_method' | 'requires_confirmation' | 'requires_action' | 'processing' | 'requires_capture' | 'canceled' | 'succeeded';
-export type OrderState = 'draft' | 'cancel' | 'paid' | 'done' | 'invoiced';
+export type PaymentProvider =
+  | 'stripe'
+  | 'razorpay'
+  | 'paypal'
+  | 'demo_online'
+  | 'cash'
+export type StripePaymentStatus =
+  | 'requires_payment_method'
+  | 'requires_confirmation'
+  | 'requires_action'
+  | 'processing'
+  | 'requires_capture'
+  | 'canceled'
+  | 'succeeded'
+export type OrderState = 'draft' | 'cancel' | 'paid' | 'done' | 'invoiced'
 
 export type PaymentConfigResponse = {
-  provider: PaymentProvider;
-  public_key: string;
-  currency: string;
+  provider: PaymentProvider
+  public_key: string
+  currency: string
 }
 
 export type CartPayload = {
-  items: CartItem[];
-  total: number;
-  subtotal: number;
+  items: CartItem[]
+  total: number
+  subtotal: number
 }
 
 export type CreatePaymentRequest = {
-  cart_id?: string;
-  cart: CartPayload;
-  customer: CustomerDetails;
-  orderType: 'dine-in' | 'delivery' | 'takeout';
-  notes?: string;
+  cart_id?: string
+  cart: CartPayload
+  customer: CustomerDetails
+  orderType: 'dine-in' | 'delivery' | 'takeout'
+  notes?: string
 }
 
 export type WebhookEvent = {
-  provider: PaymentProvider;
-  event_type: string;
-  payload: unknown;
+  provider: PaymentProvider
+  event_type: string
+  payload: unknown
 }

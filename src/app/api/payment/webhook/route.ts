@@ -158,17 +158,27 @@ export async function POST(req: NextRequest) {
             const itemIds = s.i || []
             const productIds = s.p || []
             const prices = s.e || []
+            const qtyFree = (s as any).q_f || 0
 
+            // Process items in selection order (index-based) so free quota applies correctly
             for (let i = 0; i < itemIds.length; i++) {
               const ciid = itemIds[i]
               const pid = productIds[i]
               const price = prices[i] || 0
-              subItemTotalExtra += price
+
+              // Items at index < qtyFree are free (list_price=0), rest are paid
+              let linePrice = 0
+              if (i >= qtyFree) {
+                // Beyond free quota - charge the full price
+                linePrice = price
+                subItemTotalExtra += linePrice
+              }
+              // else: item is free (linePrice stays 0)
 
               childLines.push({
                 product_id: pid,
                 quantity: item.q,
-                list_price: price,
+                list_price: linePrice,
                 combo_id: item.p,
                 combo_line_id: comboLineId,
                 combo_item_id: ciid,
@@ -223,7 +233,18 @@ export async function POST(req: NextRequest) {
         console.error('❌ [Webhook] Fulfillment FAILED:', err.message)
         console.error('❌ [Webhook] Full Error:', err)
         if (err.stack) console.error('❌ [Webhook] Stack:', err.stack)
-        // We return 500 so Stripe retries if it's a transient failure
+        // attempt to refund the charge since we couldn't create the order
+        try {
+          console.log(
+            '[Webhook] Initiating refund due to fulfillment failure...',
+          )
+          await stripe.refunds.create({ payment_intent: paymentIntent.id })
+          console.log('[Webhook] Refund created successfully.')
+        } catch (refundErr) {
+          console.error('[Webhook] Refund attempt failed:', refundErr)
+        }
+        // Return 500 so Stripe may still retry if it deems necessary;
+        // we already queued a refund which protects the customer.
         return NextResponse.json(
           { error: `Fulfillment failed: ${err.message}` },
           { status: 500 },
