@@ -110,7 +110,6 @@ export async function calculateOrderTotal(orderLines: OrderLineItem[]) {
       customer_note: item.customer_note || '',
       // Odoo 19 Linkage
       combo_id: item.combo_id,
-      combo_line_id: item.combo_line_id,
       combo_item_id: item.combo_item_id,
     }
   })
@@ -136,50 +135,69 @@ export async function calculateOrderTotal(orderLines: OrderLineItem[]) {
 export function expandCartItems(cartItems: CartItem[]): OrderLineItem[] {
   const expanded: OrderLineItem[] = []
 
-  for (const item of cartItems) {
-    let subItemTotalExtra = 0
-    const childLines: OrderLineItem[] = []
+  // Recursive helper to expand combo selections
+  const expandCombo = (
+    selections: any[],
+    parentQty: number,
+  ): OrderLineItem[] => {
+    const lines: OrderLineItem[] = []
+    for (const selection of selections) {
+      const comboId = selection.combo_id || selection.combo_line_id
+      const productIds = selection.product_ids || []
+      const comboItemIds = selection.combo_item_ids || []
+      const extraPrices = selection.extra_prices || []
+      const attributes = selection.combo_item_attributes || []
+      const subSelections = selection.sub_selections || []
 
-    // 1. Prepare Child Lines first to calculate total extra
-    if (item.meta?.combo_selections) {
-      for (const selection of item.meta.combo_selections) {
-        const productIds = selection.product_ids || []
-        const comboItemIds = selection.combo_item_ids || []
-        const extraPrices = selection.extra_prices || []
-        const comboLineId = selection.combo_line_id
+      for (let i = 0; i < productIds.length; i++) {
+        const pid = productIds[i]
+        const ciid = comboItemIds[i]
+        const price = extraPrices[i] || 0
+        const itemAttrs = attributes[i] // Array of attribute IDs for this specific product
+        const itemSubs = subSelections[i] // Array of combo selections for this specific product
 
-        for (let i = 0; i < productIds.length; i++) {
-          const pid = productIds[i]
-          const ciid = comboItemIds[i]
-          const price = extraPrices[i] || 0
+        lines.push({
+          product_id: pid,
+          quantity: parentQty,
+          list_price: price,
+          combo_id: comboId,
+          combo_item_id: ciid,
+          attribute_value_ids:
+            itemAttrs && itemAttrs.length > 0 ? itemAttrs : undefined,
+          customer_note: '',
+        })
 
-          subItemTotalExtra += price
-
-          childLines.push({
-            product_id: pid,
-            quantity: item.quantity,
-            list_price: price,
-            combo_id: item.product.id, // The parent product
-            combo_line_id: comboLineId,
-            combo_item_id: ciid,
-            customer_note: '', // Child lines usually don't have separate notes from the UI
-          })
+        // Recursively add nested combos for this item
+        if (itemSubs && itemSubs.length > 0) {
+          lines.push(...expandCombo(itemSubs, parentQty))
         }
       }
     }
+    return lines
+  }
 
-    // 2. Add Parent Line (only if it has a price or has no child lines)
-    // Base price = Total - Sum(Extras)
-    const basePrice = Math.max(0, item.product.list_price - subItemTotalExtra)
+  for (const item of cartItems) {
+    let subItemTotalExtra = 0
+    let childLines: OrderLineItem[] = []
 
-    if (basePrice > 0 || childLines.length === 0) {
-      expanded.push({
-        product_id: item.product.id,
-        quantity: item.quantity,
-        list_price: basePrice,
-        customer_note: item.notes || item.meta?.notes || '',
-      })
+    if (item.meta?.combo_selections) {
+      childLines = expandCombo(item.meta.combo_selections, item.quantity)
+      // Calculate total extra price from ALL expanded child lines
+      // (Note: Odoo usually expects the parent to have the base price and children have the extra)
+      subItemTotalExtra = childLines.reduce((sum, cl) => sum + (cl.list_price || 0), 0)
     }
+
+    // 2. Add Parent Line
+    const basePrice = Math.max(0, item.product.list_price - subItemTotalExtra)
+    
+    // Always add parent line for POS combos (it's the anchor)
+    expanded.push({
+      product_id: item.product.id,
+      quantity: item.quantity,
+      list_price: basePrice,
+      attribute_value_ids: item.meta?.attribute_value_ids,
+      customer_note: item.notes || item.meta?.notes || '',
+    })
 
     // 3. Add Child Lines
     expanded.push(...childLines)
