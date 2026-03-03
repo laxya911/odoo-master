@@ -113,39 +113,50 @@ export const CheckoutDialog = memo(
     }, [cartSignature])
 
     // Create payment intent only when user reaches payment step
-    const createPaymentIntent = useCallback(async () => {
-      if (creatingPaymentIntent || clientSecret) return
-      // nothing to charge
-      if (!cartItems || cartItems.length === 0) {
-        console.warn('[CheckoutDialog] createPaymentIntent skipped: cart empty')
-        return
-      }
-
-      setCreatingPaymentIntent(true)
-
-      try {
-        const response = await fetch('/api/payment/create', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            cart: { items: cartItems, total, subtotal },
-            customer: form.getValues(),
-            orderType: form.getValues('orderType'),
-            notes: form.getValues('notes'),
-          }),
-        })
-
-        if (!response.ok) throw new Error('Failed to create payment intent')
-        const data = await response.json()
-        if (data.clientSecret) {
-          setClientSecret(data.clientSecret)
+    const createPaymentIntent = useCallback(
+      async (force = false) => {
+        if (!force && (creatingPaymentIntent || clientSecret)) return
+        // nothing to charge
+        if (!cartItems || cartItems.length === 0) {
+          console.warn('[CheckoutDialog] createPaymentIntent skipped: cart empty')
+          return
         }
-      } catch (err) {
-        console.error('Payment intent creation failed:', err)
-      } finally {
-        setCreatingPaymentIntent(false)
-      }
-    }, [cartItems, total, subtotal, form, clientSecret, creatingPaymentIntent])
+
+        setCreatingPaymentIntent(true)
+
+        try {
+          const response = await fetch('/api/payment/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              cart: { items: cartItems, total, subtotal },
+              customer: form.getValues(),
+              orderType: form.getValues('orderType'),
+              notes: form.getValues('notes'),
+            }),
+          })
+
+          if (!response.ok) throw new Error('Failed to create payment intent')
+          const data = await response.json()
+          if (data.clientSecret) {
+            setClientSecret(data.clientSecret)
+          }
+        } catch (err) {
+          console.error('Payment intent creation failed:', err)
+        } finally {
+          setCreatingPaymentIntent(false)
+        }
+      },
+      [
+        cartItems,
+        total,
+        subtotal,
+        form,
+        clientSecret,
+        creatingPaymentIntent,
+        setClientSecret,
+      ],
+    )
 
     // if dialog is opened, start creating payment intent immediately so the clientSecret
     // will hopefully be ready by the time user reaches the payment step
@@ -178,8 +189,8 @@ export const CheckoutDialog = memo(
         ])
         if (!isValid) return
         setCurrentStep(step)
-        // ensure intent exists (might already be created when entering details)
-        createPaymentIntent()
+        // FORCE re-creation or update of intent to capture latest notes/address/type in metadata
+        createPaymentIntent(true)
       } else {
         setCurrentStep(step)
       }

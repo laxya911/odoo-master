@@ -180,23 +180,32 @@ export async function fulfillOdooOrder(
     name: `Online Order - ${stripePaymentIntentId ? stripePaymentIntentId.slice(-6) : 'WEB'}`,
     session_id: sessionId,
     partner_id: partnerId,
-    lines: orderBreakdown.lines.map((line) => {
-      // Basic line dictionary
-      const vals: any = {
-        product_id: line.product_id,
-        qty: line.quantity,
-        price_unit: line.list_price,
-        price_subtotal: line.price_subtotal || 0,
-        price_subtotal_incl: line.price_subtotal_incl || 0,
-        tax_ids: line.tax_ids.length > 0 ? [[6, 0, line.tax_ids]] : [],
-        // Odoo 19 POS stores customer_note as a plain string prefixed with "Note: ".
-        // Confirmed by inspecting native POS orders in DB — do NOT JSON.stringify.
-        customer_note: line.customer_note ? `Note: ${line.customer_note}` : '',
-        note: line.customer_note ? `Note: ${line.customer_note}` : '',
-      }
-      
-      return [0, 0, vals]
-    }),
+    lines: orderBreakdown.lines
+      .filter((line) => line.list_price > 0 || !line.combo_line_id) // Strict invoicing guard
+      .map((line) => {
+        // Basic line dictionary
+        const vals: any = {
+          product_id: line.product_id,
+          qty: line.quantity,
+          price_unit: line.list_price,
+          price_subtotal: line.price_subtotal || 0,
+          price_subtotal_incl: line.price_subtotal_incl || 0,
+          tax_ids: line.tax_ids.length > 0 ? [[6, 0, line.tax_ids]] : [],
+          // CONFIRMED from Odoo 19 POS JS source (lineScreenValues getter):
+          // - `customer_note` is rendered with t-esc (plain text)
+          // - `note` is JSON.parsed. Native format: [{"note": "...", "colorIndex": 9}]
+          customer_note: line.customer_note || '',
+          note: line.customer_note
+            ? JSON.stringify([{ note: line.customer_note, colorIndex: 9 }])
+            : '',
+          // Odoo 19 Combo Linkage
+          combo_id: line.combo_id,
+          combo_line_id: line.combo_line_id,
+          combo_item_id: line.combo_item_id,
+        }
+
+        return [0, 0, vals]
+      }),
     to_invoice: true,
     amount_tax: orderBreakdown.amount_tax,
     amount_total: orderBreakdown.amount_total,
