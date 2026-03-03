@@ -16,8 +16,8 @@ export async function fulfillOdooOrder(
   const {
     orderLines: cartItems,
     customer,
+    customer_note: notes,
     paymentMethod,
-    notes,
     orderType,
   } = payload
 
@@ -181,7 +181,7 @@ export async function fulfillOdooOrder(
     session_id: sessionId,
     partner_id: partnerId,
     lines: orderBreakdown.lines
-      .filter((line) => line.list_price > 0 || !line.combo_line_id) // Strict invoicing guard
+      .filter((line) => line.price_subtotal_incl > 0 || !line.combo_id) // Strict invoicing guard: skip $0 components but keep $0 parents
       .map((line) => {
         // Basic line dictionary
         const vals: any = {
@@ -217,9 +217,9 @@ export async function fulfillOdooOrder(
     delivery_status: 'received', // POS "Delivery" tab visibility
     shipping_date: today,
     preset_id: presetId, // Maps to Dine In / Takeout / Delivery tabs
-    // general_customer_note is a plain Text field on pos.order — safe as plain string.
-    // Do NOT include internal_note — it does not exist on pos.order and corrupts the write.
+    // general_customer_note and api_order_notes are for backend display
     general_customer_note: (typeof notes === 'string' && notes.trim()) ? notes.trim() : '',
+    api_order_notes: (typeof notes === 'string' && notes.trim()) ? notes.trim() : '',
   }
 
   // 5. Create POS Order

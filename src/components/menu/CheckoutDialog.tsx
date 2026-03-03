@@ -132,7 +132,7 @@ export const CheckoutDialog = memo(
               cart: { items: cartItems, total, subtotal },
               customer: form.getValues(),
               orderType: form.getValues('orderType'),
-              notes: form.getValues('notes'),
+              customer_note: form.getValues('notes'),
             }),
           })
 
@@ -158,19 +158,6 @@ export const CheckoutDialog = memo(
       ],
     )
 
-    // if dialog is opened, start creating payment intent immediately so the clientSecret
-    // will hopefully be ready by the time user reaches the payment step
-    useEffect(() => {
-      if (isOpen && !clientSecret && !creatingPaymentIntent) {
-        createPaymentIntent()
-      }
-    }, [
-      isOpen,
-      cartSignature,
-      clientSecret,
-      creatingPaymentIntent,
-      createPaymentIntent,
-    ])
 
     const handleStepChange = async (step: CheckoutStep) => {
       // Validate current step before moving forward
@@ -178,8 +165,6 @@ export const CheckoutDialog = memo(
         const isValid = await form.trigger(['name', 'email', 'phone'])
         if (!isValid) return
         setCurrentStep(step)
-        // start fetching clientSecret in background while user fills order details
-        createPaymentIntent()
       } else if (step === 'payment') {
         const isValid = await form.trigger([
           'street',

@@ -182,7 +182,7 @@ export async function POST(req: NextRequest) {
                 combo_id: item.p,
                 combo_line_id: comboLineId,
                 combo_item_id: ciid,
-                notes: '',
+                customer_note: '',
               })
             }
           }
@@ -196,7 +196,7 @@ export async function POST(req: NextRequest) {
             product_id: item.p,
             quantity: item.q,
             list_price: basePrice,
-            notes: item.n || '',
+            customer_note: item.n || '',
           })
         }
         // Add child lines (always included — they carry the combo pricing)
@@ -217,7 +217,7 @@ export async function POST(req: NextRequest) {
         orderType:
           (metadata.order_type as 'dine-in' | 'delivery' | 'takeout') ||
           'delivery',
-        notes: metadata.notes || '',
+        customer_note: metadata.notes || '',
         total: actualAmount,
       }
 

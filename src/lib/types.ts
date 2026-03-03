@@ -99,7 +99,7 @@ export type OrderLineItem = {
   product_id: number
   quantity: number
   list_price: number
-  notes?: string
+  customer_note?: string
   // Odoo 19 Combo Linkage
   combo_id?: number
   combo_line_id?: number
@@ -170,7 +170,7 @@ export type OrderPayload = {
   customer: CustomerDetails
   paymentMethod: PaymentProvider
   orderType: 'dine-in' | 'delivery' | 'takeout'
-  notes?: string
+  customer_note?: string
   total: number
 }
 
@@ -208,7 +208,7 @@ export type CreatePaymentRequest = {
   cart: CartPayload
   customer: CustomerDetails
   orderType: 'dine-in' | 'delivery' | 'takeout'
-  notes?: string
+  customer_note?: string
 }
 
 export type WebhookEvent = {

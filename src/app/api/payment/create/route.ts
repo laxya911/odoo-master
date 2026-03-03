@@ -139,12 +139,12 @@ export async function POST(req: NextRequest) {
         street: body.customer.street || '',
         city: body.customer.city || '',
         zip: body.customer.zip || '',
-        notes: body.notes || '',
+        notes: body.customer_note || '',
         // Primary serialized form (if short)
         line_items:
           JSON.stringify(compactItems).length <= 480
             ? JSON.stringify(compactItems)
-            : undefined,
+            : null,
         // A compact, guaranteed-short string representation (always present)
         line_items_str: compactString,
       },
