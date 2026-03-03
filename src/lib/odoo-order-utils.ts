@@ -107,7 +107,7 @@ export async function calculateOrderTotal(orderLines: OrderLineItem[]) {
       price_subtotal: priceExcl,
       price_subtotal_incl: lineTotal,
       tax_ids: applicableTaxIds,
-      customer_note: item.notes || '',
+      customer_note: item.customer_note || '',
       // Odoo 19 Linkage
       combo_id: item.combo_id,
       combo_line_id: item.combo_line_id,
@@ -162,7 +162,7 @@ export function expandCartItems(cartItems: CartItem[]): OrderLineItem[] {
             combo_id: item.product.id, // The parent product
             combo_line_id: comboLineId,
             combo_item_id: ciid,
-            notes: '', // Child lines usually don't have separate notes from the UI
+            customer_note: '', // Child lines usually don't have separate notes from the UI
           })
         }
       }
@@ -177,7 +177,7 @@ export function expandCartItems(cartItems: CartItem[]): OrderLineItem[] {
         product_id: item.product.id,
         quantity: item.quantity,
         list_price: basePrice,
-        notes: item.notes || item.meta?.notes || '',
+        customer_note: item.notes || item.meta?.notes || '',
       })
     }
 
