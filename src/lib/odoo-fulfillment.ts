@@ -181,7 +181,6 @@ export async function fulfillOdooOrder(
     session_id: sessionId,
     partner_id: partnerId,
     lines: orderBreakdown.lines
-      .filter((line) => line.price_subtotal_incl > 0 || !line.combo_id) // Strict invoicing guard: skip $0 components but keep $0 parents
       .map((line) => {
         // Basic line dictionary
         const vals: any = {
@@ -200,8 +199,11 @@ export async function fulfillOdooOrder(
             : '',
           // Odoo 19 Combo Linkage
           combo_id: line.combo_id,
-          combo_line_id: line.combo_line_id,
           combo_item_id: line.combo_item_id,
+          attribute_value_ids:
+            line.attribute_value_ids && line.attribute_value_ids.length > 0
+              ? [[6, 0, line.attribute_value_ids]]
+              : [],
         }
 
         return [0, 0, vals]
@@ -308,12 +310,44 @@ export async function fulfillOdooOrder(
 
   try {
     console.log('[Fulfillment] Generating invoice...')
-    // Generate invoice - this moves the order towards Invoiced/Done state
+    // action_pos_order_invoice creates the account.move and returns the action for it
     await odooCall('pos.order', 'action_pos_order_invoice', { ids: [orderId] })
-    console.log('[Fulfillment] Invoice generated successfully.')
+    console.log('[Fulfillment] Invoice generated. Verifying account move...')
+
+    // Re-read order to find the linked move
+    const orderRefetched = await odooCall<any[]>('pos.order', 'read', {
+      ids: [orderId],
+      fields: ['account_move', 'state', 'is_invoiced'],
+    })
+
+    if (orderRefetched?.[0]?.account_move) {
+      const moveId = Array.isArray(orderRefetched[0].account_move)
+        ? orderRefetched[0].account_move[0]
+        : orderRefetched[0].account_move
+
+      console.log(`[Fulfillment] Linked Account Move ID: ${moveId}. Checking state...`)
+      const move = await odooCall<any[]>('account.move', 'read', {
+        ids: [moveId],
+        fields: ['state'],
+      })
+
+      if (move?.[0]?.state === 'draft') {
+        console.log('[Fulfillment] Account Move is in DRAFT. Attempting to post...')
+        try {
+          await odooCall('account.move', 'action_post', { ids: [moveId] })
+          console.log('[Fulfillment] Account Move posted successfully.')
+        } catch (postErr: any) {
+          console.error('[Fulfillment] Failed to post account move:', postErr.message)
+        }
+      } else {
+        console.log(`[Fulfillment] Account Move state is already: ${move?.[0]?.state}`)
+      }
+    } else {
+      console.warn('[Fulfillment] No account_move found on order after invoicing call.')
+    }
   } catch (e: any) {
     console.warn(
-      '[Fulfillment] Invoice generation failed, attempting manual state move:',
+      '[Fulfillment] Invoice generation failed or move posting error:',
       e.message,
     )
     // Fallback: manually move to 'done' state if invoicing fails (optional safeguard)

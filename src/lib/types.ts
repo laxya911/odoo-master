@@ -76,11 +76,13 @@ export type PosCategory = {
 export type CartItemMeta = {
   attribute_value_ids?: number[]
   combo_selections?: Array<{
-    combo_line_id: number
+    combo_id: number
     product_ids: number[]
     combo_item_ids?: number[] // Linkage for expansion
     extra_prices?: number[] // Prices for expansion
     qty_free?: number // How many items in this combo line are free
+    combo_item_attributes?: number[][] // Attribute IDs for EACH product in product_ids
+    sub_selections?: any[] // Nested combo selections
   }>
   extras?: Product[]
   notes?: string
@@ -102,8 +104,8 @@ export type OrderLineItem = {
   customer_note?: string
   // Odoo 19 Combo Linkage
   combo_id?: number
-  combo_line_id?: number
   combo_item_id?: number
+  attribute_value_ids?: number[]
 }
 
 export interface Paginated<T> {

@@ -247,7 +247,7 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                   })
                   .filter((l) => l.combo_item_id !== undefined)
                 return {
-                  combo_line_id: parseInt(subLineId),
+                  combo_id: parseInt(subLineId),
                   product_ids: subPids,
                   combo_item_ids: subLinkage.map(
                     (l) => l.combo_item_id as number,
@@ -270,14 +270,13 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
           .filter((l) => l.combo_item_id !== undefined)
 
         return {
-          combo_line_id: parseInt(lineId),
+          combo_id: parseInt(lineId),
           product_ids: productIds,
           combo_item_ids: linkage.map((l) => l.combo_item_id!),
           extra_prices: linkage.map((l) => l.extra_price),
           qty_free: line?.included_item || 0,
-          combo_item_attributes: linkage
-            .map((l) => l.attribute_value_ids)
-            .filter(Boolean),
+          combo_item_attributes: linkage.map((l) => l.attribute_value_ids || []),
+          sub_selections: linkage.map((l) => l.sub_selections || []),
         }
       })
       .filter((c) => c.product_ids.length > 0)

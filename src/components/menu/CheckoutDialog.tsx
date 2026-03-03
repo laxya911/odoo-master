@@ -290,7 +290,11 @@ export const CheckoutDialog = memo(
                   className='h-14 rounded-2xl border-neutral-200 bg-white text-neutral-900 font-bold hover:bg-neutral-50'
                   onClick={() => {
                     handleClose()
-                    router.push(`/track/${placedOrderRef || placedOrderId}`)
+                    // Preferred to use numerical ID for tracking route
+                    const trackingId = placedOrderId || placedOrderRef
+                    if (trackingId) {
+                      router.push(`/track/${trackingId}`)
+                    }
                   }}
                 >
                   Track Order

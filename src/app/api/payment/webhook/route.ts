@@ -93,54 +93,43 @@ export async function POST(req: NextRequest) {
       )
 
       const metadata = paymentIntent.metadata || {}
-      // Prefer structured JSON if present; otherwise fall back to compact string variant
       let compactItems: any[] = []
-      if (metadata.line_items) {
-        try {
-          compactItems = JSON.parse(metadata.line_items as string)
-          console.log(
-            `📦 [Webhook] Parsed ${compactItems.length} base items from metadata.line_items.`,
-          )
-        } catch (e) {
-          console.warn(
-            '❌ [Webhook] Failed to parse metadata.line_items JSON, will attempt fallback parsing.',
-            e,
-          )
+
+      // 1. Reconstruct compactItems from chunked metadata (line_0, line_1...)
+      const lineCount = parseInt(metadata.line_count || '0')
+      if (lineCount > 0) {
+        for (let i = 0; i < lineCount; i++) {
+          const lineJson = metadata[`line_${i}`]
+          if (lineJson) {
+            try {
+              compactItems.push(JSON.parse(lineJson))
+            } catch (e) {
+              console.error(`❌ [Webhook] Failed to parse line_${i}:`, e)
+            }
+          }
+        }
+        console.log(`📦 [Webhook] Reconstructed ${compactItems.length} items from chunked metadata.`)
+      }
+
+      // 2. Fallback to legacy field or string if chunked reconstruction failed
+      if (compactItems.length === 0) {
+        if (metadata.line_items) {
+          try {
+            compactItems = JSON.parse(metadata.line_items as string)
+          } catch (e) {}
+        } else if (metadata.line_items_str) {
+          try {
+            const parts = (metadata.line_items_str as string).split(';').filter(Boolean)
+            compactItems = parts.map((p) => {
+              const [pid, q, prCents] = p.split(',')
+              return { p: Number(pid), q: Number(q), pr: Number(prCents) / 100 }
+            })
+          } catch (e) {}
         }
       }
 
-      if (
-        (!compactItems || compactItems.length === 0) &&
-        metadata.line_items_str
-      ) {
-        // Parse fallback compact string: "pid,q,pr;pid2,q2,pr2"
-        try {
-          const parts = (metadata.line_items_str as string)
-            .split(';')
-            .filter(Boolean)
-          compactItems = parts.map((p) => {
-            const [pid, q, prCents] = p.split(',')
-            return { p: Number(pid), q: Number(q), pr: Number(prCents) / 100 }
-          })
-          console.log(
-            `📦 [Webhook] Parsed ${compactItems.length} base items from metadata.line_items_str.`,
-          )
-        } catch (e) {
-          console.error(
-            '❌ [Webhook] Failed to parse fallback line_items_str metadata.',
-            e,
-          )
-          return NextResponse.json(
-            { error: 'Metadata parse error.' },
-            { status: 400 },
-          )
-        }
-      }
-
-      if (!compactItems || compactItems.length === 0) {
-        console.error(
-          '❌ [Webhook] FATAL: No metadata line items found in payment intent. Cannot fulfill order.',
-        )
+      if (compactItems.length === 0) {
+        console.error('❌ [Webhook] FATAL: No order lines found in metadata.')
         return NextResponse.json({ received: true })
       }
 
@@ -179,8 +168,7 @@ export async function POST(req: NextRequest) {
                 product_id: pid,
                 quantity: item.q,
                 list_price: linePrice,
-                combo_id: item.p,
-                combo_line_id: comboLineId,
+                combo_id: comboLineId, // This is the product.combo record ID from metadata
                 combo_item_id: ciid,
                 customer_note: '',
               })

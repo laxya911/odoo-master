@@ -107,9 +107,9 @@ export async function POST(req: NextRequest) {
       p: item.product.id,
       q: item.quantity,
       pr: item.product.list_price,
-      n: (item.notes || item.meta?.notes || '').slice(0, 30),
+      n: item.notes || item.meta?.notes || '',
       s: item.meta?.combo_selections?.map((s) => ({
-        l: s.combo_line_id,
+        l: (s as any).combo_id || (s as any).combo_line_id || 0,
         i: s.combo_item_ids,
         p: s.product_ids,
         e: s.extra_prices,
@@ -125,29 +125,34 @@ export async function POST(req: NextRequest) {
       })
       .join(';')
 
+    // 6. Create Stripe Metadata (Chunked to avoid limit issues)
+    const metadata: Record<string, string> = {
+      cart_id: body.cart_id || '',
+      order_type: body.orderType,
+      customer_name: body.customer.name,
+      customer_email: body.customer.email,
+      customer_phone: body.customer.phone || '',
+      street: body.customer.street || '',
+      city: body.customer.city || '',
+      zip: body.customer.zip || '',
+      notes: body.customer_note || '',
+      line_count: compactItems.length.toString(),
+    }
+
+    // Add each line as its own metadata key to avoid 500-char limit truncation
+    compactItems.forEach((item, index) => {
+      metadata[`line_${index}`] = JSON.stringify(item)
+    })
+
+    // Fallback for very basic tracking (legacy)
+    metadata.line_items_str = compactString.slice(0, 500)
+
     const paymentIntent = await stripe.paymentIntents.create({
       amount: amountInSmallestUnit,
       currency: currency,
       customer: customerId,
       automatic_payment_methods: { enabled: true },
-      metadata: {
-        cart_id: body.cart_id || '',
-        order_type: body.orderType,
-        customer_name: body.customer.name,
-        customer_email: body.customer.email,
-        customer_phone: body.customer.phone || '',
-        street: body.customer.street || '',
-        city: body.customer.city || '',
-        zip: body.customer.zip || '',
-        notes: body.customer_note || '',
-        // Primary serialized form (if short)
-        line_items:
-          JSON.stringify(compactItems).length <= 480
-            ? JSON.stringify(compactItems)
-            : null,
-        // A compact, guaranteed-short string representation (always present)
-        line_items_str: compactString,
-      },
+      metadata: metadata,
     })
 
     return NextResponse.json({

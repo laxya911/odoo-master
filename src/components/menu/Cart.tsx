@@ -216,20 +216,62 @@ export function Cart() {
                         })}
 
                         {/* Combo selections display */}
-                        {item.meta?.combo_selections?.map((combo, cIdx) => (
-                          <div key={cIdx}>
-                            {combo.product_ids.map((pid) => {
-                              // Find the product in the combo line
-                              const line = item.product.combo_lines?.find((l) => l.id === combo.combo_line_id);
-                              const comboProd = line?.products?.find((p) => p.id === pid);
-                              return comboProd ? (
-                                <p key={pid} className="text-[10px] text-accent-gold/80 italic">
-                                  + {comboProd.name}
-                                </p>
-                              ) : null;
-                            })}
-                          </div>
-                        ))}
+                        {item.meta?.combo_selections?.map((combo, cIdx) => {
+                          const comboId = combo.combo_id || (combo as any).combo_line_id;
+                          const line = item.product.combo_lines?.find((l) => l.id === comboId);
+
+                          return (
+                            <div key={cIdx} className="space-y-0.5 ml-2 mt-0.5 border-l border-accent-gold/20 pl-2">
+                              {combo.product_ids.map((pid, pIdx) => {
+                                const comboProd = line?.products?.find((p) => p.id === pid);
+                                if (!comboProd) return null;
+
+                                // Sub-attributes for this combo item
+                                const subAttrs = combo.combo_item_attributes?.[pIdx];
+                                const subSelections = combo.sub_selections?.[pIdx];
+
+                                return (
+                                  <div key={`${pid}-${pIdx}`}>
+                                    <p className="text-[10px] text-accent-gold/90 italic font-medium">
+                                      + {comboProd.name}
+                                    </p>
+
+                                    {/* Sub-attributes */}
+                                    {subAttrs?.map((vid) => {
+                                      let foundName = "";
+                                      comboProd.attributes?.forEach(attr => {
+                                        const val = attr.values.find(v => v.id === vid);
+                                        if (val) foundName = val.name;
+                                      });
+                                      return foundName ? (
+                                        <p key={vid} className="text-[9px] text-muted-foreground/70 ml-2">
+                                          └ {foundName}
+                                        </p>
+                                      ) : null;
+                                    })}
+
+                                    {/* Nested sub-combos */}
+                                    {subSelections?.map((sub: any, sIdx: number) => {
+                                      const subLine = comboProd.combo_lines?.find(l => l.id === sub.combo_id);
+                                      return (
+                                        <div key={sIdx} className="ml-2">
+                                          {sub.product_ids.map((spid: number) => {
+                                            const sp = subLine?.products?.find(p => p.id === spid);
+                                            return sp ? (
+                                              <p key={spid} className="text-[9px] text-accent-gold/70 italic">
+                                                └ {sp.name}
+                                              </p>
+                                            ) : null;
+                                          })}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })}
 
                         {/* Notes display */}
                         {(item.meta?.notes || item.notes) && (
