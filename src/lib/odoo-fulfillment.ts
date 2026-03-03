@@ -189,8 +189,10 @@ export async function fulfillOdooOrder(
         price_subtotal: line.price_subtotal || 0,
         price_subtotal_incl: line.price_subtotal_incl || 0,
         tax_ids: line.tax_ids.length > 0 ? [[6, 0, line.tax_ids]] : [],
-        customer_note: line.customer_note ? JSON.stringify(line.customer_note) : '',
-        note: line.customer_note || '',
+        // Odoo 19 POS stores customer_note as a plain string prefixed with "Note: ".
+        // Confirmed by inspecting native POS orders in DB — do NOT JSON.stringify.
+        customer_note: line.customer_note ? `Note: ${line.customer_note}` : '',
+        note: line.customer_note ? `Note: ${line.customer_note}` : '',
       }
       
       return [0, 0, vals]
@@ -206,9 +208,9 @@ export async function fulfillOdooOrder(
     delivery_status: 'received', // POS "Delivery" tab visibility
     shipping_date: today,
     preset_id: presetId, // Maps to Dine In / Takeout / Delivery tabs
-    // General note is a plain text field at order level — safe to send as string
-    general_customer_note: typeof notes === 'string' ? notes : '',
-    internal_note: typeof notes === 'string' ? notes : '',
+    // general_customer_note is a plain Text field on pos.order — safe as plain string.
+    // Do NOT include internal_note — it does not exist on pos.order and corrupts the write.
+    general_customer_note: (typeof notes === 'string' && notes.trim()) ? notes.trim() : '',
   }
 
   // 5. Create POS Order

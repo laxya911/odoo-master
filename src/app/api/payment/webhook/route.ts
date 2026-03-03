@@ -188,14 +188,18 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // Add parent line (Base Price = Total Item Price - Sub-item Extras)
-        orderLines.push({
-          product_id: item.p,
-          quantity: item.q,
-          list_price: Math.max(0, item.pr - subItemTotalExtra),
-          notes: item.n || '',
-        })
-        // Add child lines
+        // Add parent line only if it has a non-zero price OR there are no child lines.
+        // A $0 combo parent without child lines fails Odoo's invoice display_type constraint.
+        const basePrice = Math.max(0, item.pr - subItemTotalExtra)
+        if (basePrice > 0 || childLines.length === 0) {
+          orderLines.push({
+            product_id: item.p,
+            quantity: item.q,
+            list_price: basePrice,
+            notes: item.n || '',
+          })
+        }
+        // Add child lines (always included — they carry the combo pricing)
         orderLines.push(...childLines)
       }
 
