@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Product } from '@/lib/types'
 import { cn, generateSlug } from '@/lib/utils'
 import { useCompany } from '@/context/CompanyContext'
+import { useProducts } from '@/context/ProductContext'
 
 interface ProductCardProps {
   product: Product
@@ -24,6 +25,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   className,
 }) => {
   const { formatPrice } = useCompany()
+  const { getInclusivePrice } = useProducts()
   return (
     <div
       className={cn(
@@ -54,7 +56,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             {product.name}
           </p>
           <span className='text-accent-gold font-bold ml-2'>
-            {formatPrice(product.list_price)}
+            {formatPrice(getInclusivePrice(product))}
           </span>
         </div>
         {typeof product.description_sale === 'string' && (

@@ -109,6 +109,15 @@ export const Menu: React.FC = () => {
   const openConfigurator = useCallback(
     async (product: Product) => {
       if (!isPosOpen) return
+
+      // --- Optimization: Use pre-fetched details if available ---
+      if ((product.attributes && product.attributes.length > 0) ||
+        (product.combo_lines && product.combo_lines.length > 0)) {
+        setSelectedProduct(product)
+        setIsLoadingDetails(false)
+        return
+      }
+
       setIsLoadingDetails(true)
       setSelectedProduct(product) // Open modal immediately with basic info
       try {
@@ -121,10 +130,10 @@ export const Menu: React.FC = () => {
           setSelectedProduct((prev) =>
             prev
               ? {
-                  ...prev,
-                  attributes: details.attributes || [],
-                  combo_lines: details.combo_lines || [],
-                }
+                ...prev,
+                attributes: details.attributes || [],
+                combo_lines: details.combo_lines || [],
+              }
               : null,
           )
         }
@@ -170,11 +179,10 @@ export const Menu: React.FC = () => {
                 <button
                   key={cat}
                   onClick={() => toggleCategory(cat)}
-                  className={`whitespace-nowrap px-6 md:px-8 py-3 rounded-full text-[10px] tracking-widest uppercase transition-all border ${
-                    selectedCategories.has(cat)
+                  className={`whitespace-nowrap px-6 md:px-8 py-3 rounded-full text-[10px] tracking-widest uppercase transition-all border ${selectedCategories.has(cat)
                       ? 'bg-accent-gold border-accent-gold text-primary font-bold shadow-lg shadow-accent-gold/20'
                       : 'bg-white/5 border-white/5 text-white/90 hover:text-white cursor-pointer'
-                  }`}
+                    }`}
                 >
                   {cat}
                 </button>
@@ -192,11 +200,10 @@ export const Menu: React.FC = () => {
                   <button
                     key={tag}
                     onClick={() => toggleTag(tag)}
-                    className={`whitespace-nowrap px-5 py-2 rounded-full text-[9px] tracking-widest uppercase transition-all border ${
-                      selectedTags.has(tag)
+                    className={`whitespace-nowrap px-5 py-2 rounded-full text-[9px] tracking-widest uppercase transition-all border ${selectedTags.has(tag)
                         ? 'bg-white text-primary border-white font-bold'
                         : 'bg-white/5 border-white/10 text-white/60 hover:text-white cursor-pointer'
-                    }`}
+                      }`}
                   >
                     {tag}
                   </button>

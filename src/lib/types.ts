@@ -29,6 +29,7 @@ export type ComboLine = {
   required?: boolean
   max_item?: number // maximum selectable items for this combo line
   included_item?: number // how many items are included (free) in base price
+  base_price?: number // Odoo 19: Price applied for items beyond included_item
 }
 
 export type Product = OdooRecord & {
@@ -211,6 +212,7 @@ export type CreatePaymentRequest = {
   customer: CustomerDetails
   orderType: 'dine-in' | 'delivery' | 'takeout'
   customer_note?: string
+  paymentIntentId?: string
 }
 
 export type WebhookEvent = {

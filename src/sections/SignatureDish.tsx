@@ -31,6 +31,15 @@ export const SignatureDish: React.FC<SignatureDishProps> = ({ onNavigateMenu }) 
 
     const openConfigurator = useCallback(async (product: Product) => {
         if (!isPosOpen) return;
+
+        // --- Optimization: Use pre-fetched details if available ---
+        if ((product.attributes && product.attributes.length > 0) ||
+            (product.combo_lines && product.combo_lines.length > 0)) {
+            setSelectedProduct(product);
+            setIsLoadingDetails(false);
+            return;
+        }
+
         setIsLoadingDetails(true);
         setSelectedProduct(product); // Open modal immediately with basic info
         try {

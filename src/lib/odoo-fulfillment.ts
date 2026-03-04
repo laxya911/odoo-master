@@ -1,5 +1,5 @@
 import { odooCall } from './odoo-client'
-import { calculateOrderTotal } from './odoo-order-utils'
+import { calculateOrderTotal, expandCartItems } from './odoo-order-utils'
 import type { OrderPayload, OdooRecord } from './types'
 
 /**
@@ -158,10 +158,63 @@ export async function fulfillOdooOrder(
     console.log(`[Fulfillment] New partner created: ${partnerId}`)
   }
 
-  // 4. Calculate Totals
-  console.log('[Fulfillment] Calculating server-side totals...')
-  const orderBreakdown = await calculateOrderTotal(cartItems)
-  console.log('[Fulfillment] Totals:', {
+  // 3.5. Update partner with latest details for persistence
+  try {
+    console.log(`[Fulfillment] Updating partner ${partnerId} with current checkout info...`)
+    await odooCall('res.partner', 'write', {
+      ids: [partnerId],
+      vals: {
+        phone: customer.phone,
+        street: customer.street,
+        city: customer.city,
+        zip: customer.zip,
+      }
+    })
+  } catch (updateErr) {
+    console.warn(`[Fulfillment] Non-fatal: Failed to update partner info:`, updateErr)
+  }
+
+  // 4. Calculate Totals (Cart items are already expanded by the webhook/caller)
+  console.log('[Fulfillment] Resolving order breakdown...')
+  
+  const hasPreCalculatedData = cartItems.every(item => 
+    (item as any).price_unit_incl !== undefined && (item as any).tax_ids !== undefined
+  )
+
+  let orderBreakdown: { 
+    lines: any[], 
+    amount_total: number, 
+    amount_tax: number 
+  }
+
+  if (hasPreCalculatedData) {
+    console.log('[Fulfillment] Using pre-calculated pricing data from metadata.')
+    const lines = cartItems.map(item => {
+      const unitIncl = (item as any).price_unit_incl;
+      const unitExcl = item.list_price || 0; // 'pr' from metadata
+      const qty = item.quantity;
+
+      return {
+        ...item,
+        price_unit_incl: unitIncl,
+        price_subtotal: unitExcl * qty,
+        price_subtotal_incl: unitIncl * qty,
+      }
+    })
+    const total = lines.reduce((sum, l) => sum + l.price_subtotal_incl, 0)
+    const tax = lines.reduce((sum, l) => sum + (l.price_subtotal_incl - l.price_subtotal), 0)
+    
+    orderBreakdown = {
+      lines,
+      amount_total: Math.round(total),
+      amount_tax: Math.round(tax)
+    }
+  } else {
+    console.log('[Fulfillment] Recalculating totals from Odoo product data...')
+    orderBreakdown = await calculateOrderTotal(cartItems)
+  }
+
+  console.log('[Fulfillment] Order Totals:', {
     total: orderBreakdown.amount_total,
     tax: orderBreakdown.amount_tax,
   })
@@ -180,34 +233,33 @@ export async function fulfillOdooOrder(
     name: `Online Order - ${stripePaymentIntentId ? stripePaymentIntentId.slice(-6) : 'WEB'}`,
     session_id: sessionId,
     partner_id: partnerId,
-    lines: orderBreakdown.lines
-      .map((line) => {
-        // Basic line dictionary
-        const vals: any = {
-          product_id: line.product_id,
-          qty: line.quantity,
-          price_unit: line.list_price,
-          price_subtotal: line.price_subtotal || 0,
-          price_subtotal_incl: line.price_subtotal_incl || 0,
-          tax_ids: line.tax_ids.length > 0 ? [[6, 0, line.tax_ids]] : [],
-          // CONFIRMED from Odoo 19 POS JS source (lineScreenValues getter):
-          // - `customer_note` is rendered with t-esc (plain text)
-          // - `note` is JSON.parsed. Native format: [{"note": "...", "colorIndex": 9}]
-          customer_note: line.customer_note || '',
-          note: line.customer_note
-            ? JSON.stringify([{ note: line.customer_note, colorIndex: 9 }])
-            : '',
-          // Odoo 19 Combo Linkage
-          combo_id: line.combo_id,
-          combo_item_id: line.combo_item_id,
-          attribute_value_ids:
-            line.attribute_value_ids && line.attribute_value_ids.length > 0
-              ? [[6, 0, line.attribute_value_ids]]
-              : [],
-        }
+    lines: orderBreakdown.lines.map((line, index) => {
+      // Basic line dictionary
+      const vals: any = {
+        product_id: line.product_id,
+        qty: line.quantity,
+        // Odoo 19 POS with iface_tax_included: total interprets price_unit as the TARGET INCLUSIVE price.
+        // We send the inclusive unit price to ensure the final total matches Stripe exactly.
+        price_unit: (line as any).price_unit_incl || line.list_price,
+        price_subtotal: line.price_subtotal || 0,
+        price_subtotal_incl: line.price_subtotal_incl || 0,
+        tax_ids: line.tax_ids && line.tax_ids.length > 0 ? [[6, 0, line.tax_ids]] : [],
+        customer_note: line.customer_note || '',
+        note: line.customer_note
+          ? JSON.stringify([{ note: line.customer_note, colorIndex: 9 }])
+          : '',
+        // Odoo 19 Combo Linkage
+        combo_id: line.combo_id,
+        combo_item_id: (line as any).combo_item_id,
+        attribute_value_ids:
+          line.attribute_value_ids && line.attribute_value_ids.length > 0
+            ? [[6, 0, line.attribute_value_ids]]
+            : [],
+      }
 
-        return [0, 0, vals]
-      }),
+      console.log(`[Fulfillment] Line ${index} (${line.product_id}): qty=${vals.qty}, price_unit=${vals.price_unit}, incl=${vals.price_subtotal_incl}`)
+      return [0, 0, vals]
+    }),
     to_invoice: true,
     amount_tax: orderBreakdown.amount_tax,
     amount_total: orderBreakdown.amount_total,
@@ -229,6 +281,11 @@ export async function fulfillOdooOrder(
     `🚀 [Fulfillment] Creating POS Order for Partner ID: ${partnerId}...`,
   )
   console.log('[Fulfillment] Order Data:', JSON.stringify(orderData, null, 2))
+  // 5. Create POS Order
+  console.log(
+    `🚀 [Fulfillment] Creating POS Order for Partner ID: ${partnerId}...`,
+  )
+  console.log('[Fulfillment] Order Data:', JSON.stringify(orderData, null, 2))
   let orderId: number | null = null
   try {
     const orderIds = await odooCall<number[]>('pos.order', 'create', {
@@ -238,6 +295,68 @@ export async function fulfillOdooOrder(
       throw new Error('Odoo returned empty ID list for order creation')
     orderId = orderIds[0]
     console.log(`✅ [Fulfillment] POS Order created with ID: ${orderId}`)
+
+    // 5.5. Link Combo Parent and Child Lines (Odoo 19)
+    // We created lines in the same order as orderBreakdown.lines.
+    // Fetch newly created line IDs to perform the linkage.
+    console.log(`[Fulfillment] Linking combo parent/child lines for order ${orderId}...`)
+    const createdLines = await odooCall<any[]>('pos.order.line', 'search_read', {
+      domain: [['order_id', '=', orderId]],
+      fields: ['id', 'product_id'],
+      order: 'id asc', // Odoo creates lines in order
+    })
+
+    if (createdLines.length === orderBreakdown.lines.length) {
+      // Build index-based mapping
+      // Note: We need to know which line was supposed to be a parent
+      // We'll use the original orderBreakdown structure.
+      const linkageUpdates: any[] = []
+      
+      // First, identify parent lines by product_id and position
+      // Actually, expandCartItems adds parent then children.
+      // So children of a parent appear immediately after it (or recursively).
+      
+      let lastParentLineId: number | null = null
+      let currentParentProduct: number | null = null
+
+      orderBreakdown.lines.forEach((originalLine, index) => {
+        const createdLineId = createdLines[index].id
+        
+        // In our expansion logic (odoo-order-utils.ts):
+        // Parent line has combo_id/combo_item_id as undefined/false
+        // Child line has combo_id/combo_item_id as numbers
+        const isChild = !!(originalLine as any).combo_item_id
+        
+        if (!isChild) {
+           // This is a parent line
+           lastParentLineId = createdLineId
+           currentParentProduct = originalLine.product_id
+        } else if (lastParentLineId) {
+           // This is a child line - link it to the last parent found
+           linkageUpdates.push({
+             id: createdLineId,
+             vals: { 
+               combo_parent_id: lastParentLineId,
+               // Ensure combo_item_id is sent as an ID, not just list_price
+               combo_item_id: (originalLine as any).combo_item_id
+             }
+           })
+        }
+      })
+
+      if (linkageUpdates.length > 0) {
+        console.log(`[Fulfillment] Applying linkage for ${linkageUpdates.length} child lines...`)
+        for (const update of linkageUpdates) {
+          await odooCall('pos.order.line', 'write', {
+            ids: [update.id],
+            vals: update.vals
+          }).catch(err => console.warn(`[Fulfillment] Linkage failed for line ${update.id}:`, err))
+        }
+      }
+    } else {
+      console.warn(`[Fulfillment] Line count mismatch (${createdLines.length} vs ${orderBreakdown.lines.length}). Skipping automatic linkage.`)
+    }
+
   } catch (e: any) {
     console.error(
       '❌ [Fulfillment] Failed to create POS Order (pos.order). Path: pos.order.create',

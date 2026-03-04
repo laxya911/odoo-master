@@ -95,8 +95,47 @@ export async function getRestaurantProducts(options: GetProductsOptions = {}) {
     }
   }
 
+  // Fetch Tax Details
+  const allTaxIds = [
+    ...new Set(records.flatMap((r: OdooRecord) => (r.taxes_id as number[]) || [])),
+  ]
+
+  // Add Company Default Tax to the fetch list
+  const companies = await odooCall<any[]>('res.company', 'search_read', {
+    domain: [],
+    fields: ['account_sale_tax_id'],
+    limit: 1
+  })
+  const defaultTaxId = companies[0]?.account_sale_tax_id?.[0]
+  if (defaultTaxId && !allTaxIds.includes(defaultTaxId)) {
+    allTaxIds.push(defaultTaxId)
+  }
+
+  let taxesMap: Record<number, { id: number; name: string; amount: number; price_include: boolean }> = {}
+  if (allTaxIds.length > 0) {
+    const taxRecords = await odooCall<any[]>('account.tax', 'read', {
+      ids: allTaxIds,
+      fields: ['id', 'name', 'amount', 'price_include'],
+    })
+    taxRecords.forEach(t => {
+      taxesMap[t.id] = {
+        id: t.id,
+        name: t.name,
+        amount: t.amount,
+        price_include: t.price_include,
+      }
+    })
+  }
+
+  // Pre-fetch all product details (attributes, combos) to optimize UX
+  // Limit enrichment to products that are likely to be configured
+  const enrichedProducts = await enrichProductsWithDetails(records as unknown as Product[])
+
   return {
-    data: records as unknown as Product[],
+    data: enrichedProducts,
+    tags,
+    taxes: taxesMap,
+    defaultTaxId,
     meta: {
       total,
       limit,
@@ -105,8 +144,263 @@ export async function getRestaurantProducts(options: GetProductsOptions = {}) {
       domain,
       categories,
       tags,
+      defaultTaxId,
     },
   }
+}
+
+/**
+ * Batched product enrichment for attributes and Odoo 19 combos.
+ * Pre-fetches everything needed for the configurator modal.
+ */
+export async function enrichProductsWithDetails(products: Product[]): Promise<Product[]> {
+  if (products.length === 0) return products
+
+  // 1. Fetch Template data for all products
+  const tmplIds = [...new Set(products.map(p => (p.product_tmpl_id as [number, string] | undefined)?.[0]).filter(Boolean) as number[])]
+  if (tmplIds.length === 0) return products
+
+  const templates = await odooCall<any[]>('product.template', 'read', {
+    ids: tmplIds,
+    fields: ['id', 'attribute_line_ids', 'combo_ids'],
+  })
+  const tmplMap = new Map(templates.map(t => [t.id, t]))
+
+  // 2. Gather all Attribute Lines and Combo IDs
+  const allAttrLineIds = [...new Set(templates.flatMap(t => t.attribute_line_ids || []))]
+  const allComboIds = [...new Set(templates.flatMap(t => t.combo_ids || []))]
+
+  // 3. Batch fetch Attribute Data if needed
+  let attributeLinesMap: Record<number, any> = {}
+  if (allAttrLineIds.length > 0) {
+    const lines = await odooCall<any[]>('product.template.attribute.line', 'read', {
+      ids: allAttrLineIds,
+      fields: ['id', 'attribute_id', 'product_template_value_ids'],
+    })
+    
+    const attrIds = [...new Set(lines.map(l => l.attribute_id[0]))]
+    const attrsData = await odooCall<any[]>('product.attribute', 'read', {
+      ids: attrIds,
+      fields: ['id', 'name', 'display_type'],
+    })
+    const attrMetaMap = new Map(attrsData.map(a => [a.id, a]))
+
+    const valueIds = [...new Set(lines.flatMap(l => l.product_template_value_ids || []))]
+    const valuesData = await odooCall<any[]>('product.template.attribute.value', 'read', {
+      ids: valueIds,
+      fields: ['id', 'name', 'price_extra', 'product_attribute_value_id'],
+    })
+    const valueMetaMap = new Map(valuesData.map(v => [v.id, v]))
+
+    lines.forEach(line => {
+      const aId = line.attribute_id[0]
+      const aMeta = attrMetaMap.get(aId)
+      attributeLinesMap[line.id] = {
+        id: line.id,
+        name: aMeta?.name || '',
+        attribute: { id: aId, name: aMeta?.name || '' },
+        display_type: aMeta?.display_type || 'radio',
+        values: (line.product_template_value_ids || []).map((vid: number) => valueMetaMap.get(vid)).filter(Boolean)
+      }
+    })
+  }
+
+  // 4. Batch fetch Combo Data if needed
+  let comboLineResultsMap: Record<number, any> = {}
+  if (allComboIds.length > 0) {
+    // Note: We'll follow the same logic as getRestaurantProductDetails but batched.
+    // To keep this performant, we'll only go 1 level deep for now (standard for Odoo 19 combos).
+    const comboData = await odooCall<any[]>('product.combo', 'read', {
+      ids: allComboIds,
+      fields: ['id', 'name', 'combo_item_ids', 'qty_max', 'qty_free', 'base_price'],
+    }).catch(() => odooCall<any[]>('product.combo', 'read', {
+      ids: allComboIds,
+      fields: ['id', 'name', 'combo_item_ids', 'base_price'], // Fallback for older Odoo
+    }))
+
+    const allItemIds = [...new Set(comboData.flatMap(c => c.combo_item_ids || []))]
+    if (allItemIds.length > 0) {
+      const items = await odooCall<any[]>('product.combo.item', 'read', {
+        ids: allItemIds,
+        fields: ['id', 'combo_id', 'product_id', 'extra_price'],
+      })
+      
+      const subProductIds = [...new Set(items.map(i => i.product_id[0]))]
+      const subProducts = await odooCall<any[]>('product.product', 'read', {
+        ids: subProductIds,
+        fields: ['id', 'name', 'list_price', 'image_256', 'taxes_id', 'product_tmpl_id'],
+      })
+      const subProdMap = new Map(subProducts.map(p => [p.id, p]))
+
+      // Fetch Attributes for these sub-products to enable "Side" selection in combos
+      const subTmplIds = [...new Set(subProducts.map(p => (p.product_tmpl_id as [number, string] | undefined)?.[0]).filter(Boolean) as number[])]
+      let subAttrLinesMap: Record<number, any> = {}
+      if (subTmplIds.length > 0) {
+        const subTemplates = await odooCall<any[]>('product.template', 'read', {
+          ids: subTmplIds,
+          fields: ['id', 'attribute_line_ids', 'combo_ids'],
+        })
+        const subTmplDataMap = new Map(subTemplates.map(t => [t.id, t]))
+        
+        const subAllAttrLineIds = [...new Set(subTemplates.flatMap(t => t.attribute_line_ids || []))]
+        if (subAllAttrLineIds.length > 0) {
+          const subLines = await odooCall<any[]>('product.template.attribute.line', 'read', {
+            ids: subAllAttrLineIds,
+            fields: ['id', 'attribute_id', 'product_template_value_ids'],
+          })
+          
+          const subAttrIds = [...new Set(subLines.map(l => l.attribute_id[0]))]
+          const subAttrsData = await odooCall<any[]>('product.attribute', 'read', {
+            ids: subAttrIds,
+            fields: ['id', 'name', 'display_type'],
+          })
+          const subAttrMetaMap = new Map(subAttrsData.map(a => [a.id, a]))
+
+          const subValueIds = [...new Set(subLines.flatMap(l => l.product_template_value_ids || []))]
+          const subValuesData = await odooCall<any[]>('product.template.attribute.value', 'read', {
+            ids: subValueIds,
+            fields: ['id', 'name', 'price_extra', 'product_attribute_value_id'],
+          })
+          const subValueMetaMap = new Map(subValuesData.map(v => [v.id, v]))
+
+          subLines.forEach(line => {
+            const aId = line.attribute_id[0]
+            const aMeta = subAttrMetaMap.get(aId)
+            subAttrLinesMap[line.id] = {
+              id: line.id,
+              name: aMeta?.name || '',
+              attribute: { id: aId, name: aMeta?.name || '' },
+              display_type: aMeta?.display_type || 'radio',
+              values: (line.product_template_value_ids || []).map((vid: number) => subValueMetaMap.get(vid)).filter(Boolean)
+            }
+          })
+        }
+
+        // Attach discovered attributes to the sub-products
+        subProducts.forEach(sp => {
+          const stId = (sp.product_tmpl_id as [number, string] | undefined)?.[0]
+          const stmpl = subTmplDataMap.get(stId)
+          if (stmpl) {
+            sp.attributes = (stmpl.attribute_line_ids || []).map((lid: number) => subAttrLinesMap[lid]).filter(Boolean)
+            sp.combo_ids = stmpl.combo_ids || []
+          }
+        })
+
+        // Fetch Nested Combo data for sub-products (Level 2)
+        const subAllComboIds = [...new Set(subTemplates.flatMap(t => t.combo_ids || []))]
+        if (subAllComboIds.length > 0) {
+          const subComboData = await odooCall<any[]>('product.combo', 'read', {
+            ids: subAllComboIds,
+            fields: ['id', 'name', 'combo_item_ids', 'qty_max', 'qty_free', 'base_price'],
+          }).catch(() => [])
+
+          const subAllItemIds = [...new Set(subComboData.flatMap(c => c.combo_item_ids || []))]
+          if (subAllItemIds.length > 0) {
+            const subItems = await odooCall<any[]>('product.combo.item', 'read', {
+              ids: subAllItemIds,
+              fields: ['id', 'combo_id', 'product_id', 'extra_price'],
+            })
+            
+            const subSubProductIds = [...new Set(subItems.map(i => i.product_id[0]))]
+            const subSubProducts = await odooCall<any[]>('product.product', 'read', {
+              ids: subSubProductIds,
+              fields: ['id', 'name', 'list_price'],
+            })
+            const subSubProdMap = new Map(subSubProducts.map(p => [p.id, p]))
+
+            const subItemsByCombo = new Map<number, any[]>()
+            subItems.forEach(it => {
+              const cid = it.combo_id[0]
+              const pid = it.product_id[0]
+              const p = subSubProdMap.get(pid)
+              if (p) {
+                if (!subItemsByCombo.has(cid)) subItemsByCombo.set(cid, [])
+                subItemsByCombo.get(cid)?.push({
+                  ...p,
+                  extra_price: it.extra_price,
+                  combo_item_id: it.id,
+                  combo_id: cid
+                })
+              }
+            })
+
+            const subComboLinesMap: Record<number, any> = {}
+            subComboData.forEach(c => {
+              const sps = subItemsByCombo.get(c.id) || []
+              subComboLinesMap[c.id] = {
+                id: c.id,
+                name: c.name,
+                max_item: c.qty_max || 1,
+                included_item: c.qty_free || 0,
+                base_price: c.base_price || 0,
+                required: true,
+                product_ids: sps.map(p => p.id),
+                products: sps
+              }
+            })
+
+            subProducts.forEach(sp => {
+              if (sp.combo_ids?.length > 0) {
+                sp.combo_lines = sp.combo_ids.map((cid: number) => subComboLinesMap[cid]).filter(Boolean)
+              }
+            })
+          }
+        }
+      }
+
+      const itemsByCombo = new Map<number, any[]>()
+      items.forEach(it => {
+        const cid = it.combo_id[0]
+        const pid = it.product_id[0]
+        const p = subProdMap.get(pid)
+        if (p) {
+          if (!itemsByCombo.has(cid)) itemsByCombo.set(cid, [])
+          itemsByCombo.get(cid)?.push({
+            ...p,
+            extra_price: it.extra_price,
+            combo_item_id: it.id,
+            combo_id: cid
+          })
+        }
+      })
+
+      comboData.forEach(c => {
+        const products = itemsByCombo.get(c.id) || []
+        comboLineResultsMap[c.id] = {
+          id: c.id,
+          name: c.name,
+          max_item: c.qty_max || 1,
+          included_item: c.qty_free || 0,
+          base_price: c.base_price || 0,
+          required: true,
+          product_ids: products.map(p => p.id),
+          products: products
+        }
+      })
+    }
+  }
+
+  // 5. Final Assembly
+  products.forEach(p => {
+    const tId = (p.product_tmpl_id as [number, string] | undefined)?.[0]
+    if (!tId) return
+    const tmpl = tmplMap.get(tId)
+    if (!tmpl) return
+
+    const attrs = (tmpl.attribute_line_ids || []).map((lid: number) => attributeLinesMap[lid]).filter(Boolean)
+    const combos = (tmpl.combo_ids || []).map((cid: number) => comboLineResultsMap[cid]).filter(Boolean)
+
+    p.details = {
+      description_sale: p.description_sale,
+      attributes: attrs,
+      combo_lines: combos
+    }
+    // Also attach to top-level for components that check there
+    p.attributes = attrs
+    p.combo_lines = combos
+  })
+
+  return products
 }
 
 export async function getRestaurantProductDetails(id: number) {
@@ -236,7 +530,7 @@ export async function getRestaurantProductDetails(id: number) {
           {
             ids: comboIds,
             // use the actual field names from Odoo 19
-            fields: ['id', 'name', 'combo_item_ids', 'qty_max', 'qty_free'],
+            fields: ['id', 'name', 'combo_item_ids', 'qty_max', 'qty_free', 'base_price'],
           },
         )
       } catch (err) {
@@ -250,7 +544,7 @@ export async function getRestaurantProductDetails(id: number) {
           'read',
           {
             ids: comboIds,
-            fields: ['id', 'name', 'combo_item_ids'],
+            fields: ['id', 'name', 'combo_item_ids', 'base_price'],
           },
         )
       }
@@ -617,6 +911,7 @@ export async function getRestaurantProductDetails(id: number) {
             name: (combo.name as string) || `Option ${comboLines.length + 1}`,
             max_item: isNaN(maxInt) ? 1 : maxInt,
             included_item: isNaN(includedInt) ? 0 : includedInt,
+            base_price: Number((combo as any).base_price || 0),
             required: true,
             product_ids: itemDetails.map((d) => d.productId),
             products: productsList,

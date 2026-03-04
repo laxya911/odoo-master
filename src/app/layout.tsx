@@ -43,16 +43,16 @@ export default function RootLayout({
           <AuthProvider>
             <SessionProvider>
               <PaymentConfigProvider>
-                <CartProvider>
-                  <ProductProvider>
+                <ProductProvider>
+                  <CartProvider>
                     <Navbar />
                     {children}
                     <CartDrawer />
                     <FloatingOrderOrb />
                     <Footer />
                     <Toaster />
-                  </ProductProvider>
-                </CartProvider>
+                  </CartProvider>
+                </ProductProvider>
               </PaymentConfigProvider>
             </SessionProvider>
           </AuthProvider>

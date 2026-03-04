@@ -22,10 +22,27 @@ export async function calculateOrderTotal(orderLines: OrderLineItem[]) {
     }
   }
 
+  // Fetch Company Default Tax if needed
+  let defaultTaxId: number | null = null
+  const anyProductHasNoTax = Object.values(productDataMap).some(p => p.taxes_id.length === 0)
+  
+  if (anyProductHasNoTax) {
+    const companies = await odooCall<any[]>('res.company', 'search_read', {
+      domain: [],
+      fields: ['account_sale_tax_id'],
+      limit: 1
+    })
+    defaultTaxId = companies[0]?.account_sale_tax_id?.[0] || null
+  }
+
   // Collect all tax ids used and fetch tax records
   const allTaxIds = Array.from(
     new Set(Object.values(productDataMap).flatMap((p) => p.taxes_id)),
   )
+  if (defaultTaxId && !allTaxIds.includes(defaultTaxId)) {
+    allTaxIds.push(defaultTaxId)
+  }
+
   const taxes =
     allTaxIds.length > 0
       ? await odooCall<
@@ -58,53 +75,58 @@ export async function calculateOrderTotal(orderLines: OrderLineItem[]) {
       taxes_id: [],
       list_price: 0,
     }
-    const applicableTaxIds = pData.taxes_id
+    let applicableTaxIds: number[] = []
+    if (Array.isArray(pData.taxes_id) && pData.taxes_id.length > 0) {
+      applicableTaxIds = pData.taxes_id
+    } else if (defaultTaxId) {
+      applicableTaxIds = [defaultTaxId]
+    }
 
-    let totalExcludedRate = 0
+    // Odoo's list_price is the price excluding tax if tax is excluded, 
+    // and price including tax if tax is included.
+    const priceUnit = item.list_price ?? pData.list_price
+    
+    // 1. Identify included taxes to get the "extra" base price
+    let totalIncludedRate = 0
     for (const tid of applicableTaxIds) {
       const tx = taxById[tid]
-      if (tx && !tx.price_include) {
-        totalExcludedRate += tx.amount / 100
+      if (tx && tx.price_include) {
+        totalIncludedRate += tx.amount / 100
       }
     }
 
-    // Use fetched list_price if item.list_price is undefined or null
-    // (we must respect a legitimate zero price, so avoid `||` which treats 0 as falsy)
-    let priceUnit = item.list_price ?? pData.list_price
-    if (totalExcludedRate > 0) {
-      priceUnit = priceUnit / (1 + totalExcludedRate)
-      priceUnit = Number(priceUnit.toFixed(2))
+    // 2. Extract TRUE pre-tax base price
+    // If tax is included, list_price = Base * (1 + rate)
+    // If tax is excluded, list_price = Base
+    let basePriceExcl = priceUnit
+    if (totalIncludedRate > 0) {
+      basePriceExcl = priceUnit / (1 + totalIncludedRate)
     }
+    basePriceExcl = Number(basePriceExcl.toFixed(2))
 
-    const subtotal = priceUnit * qty
-    let lineTax = 0
-    let priceExcl = subtotal
+    const subtotalExcl = basePriceExcl * qty
+    let lineTaxBalance = 0
 
+    // 3. Apply ALL taxes to the base price
     for (const tid of applicableTaxIds) {
       const tx = taxById[tid]
       if (!tx) continue
-
-      if (tx.price_include) {
-        const rate = tx.amount / 100
-        priceExcl = priceExcl / (1 + rate)
-        lineTax += priceExcl * rate
-      } else {
-        lineTax += subtotal * (tx.amount / 100)
-      }
+      lineTaxBalance += subtotalExcl * (tx.amount / 100)
     }
 
-    lineTax = Number(lineTax.toFixed(2))
-    priceExcl = Number(priceExcl.toFixed(2))
-    const lineTotal = priceExcl + lineTax
+    lineTaxBalance = Number(lineTaxBalance.toFixed(2))
+    const lineTotal = subtotalExcl + lineTaxBalance
+    const priceUnitIncl = Number((lineTotal / qty).toFixed(2))
 
-    computedAmountTax += lineTax
+    computedAmountTax += lineTaxBalance
     computedAmountTotal += lineTotal
 
     return {
       product_id: item.product_id,
       quantity: item.quantity,
-      list_price: priceUnit,
-      price_subtotal: priceExcl,
+      list_price: priceUnit, // Original list price
+      price_unit_incl: priceUnitIncl, // TRUE targeted inclusive price
+      price_subtotal: subtotalExcl,
       price_subtotal_incl: lineTotal,
       tax_ids: applicableTaxIds,
       customer_note: item.customer_note || '',
@@ -117,14 +139,15 @@ export async function calculateOrderTotal(orderLines: OrderLineItem[]) {
   return {
     lines: processedLines as unknown as Array<
       OrderLineItem & {
+        price_unit_incl: number
         price_subtotal: number
         price_subtotal_incl: number
         tax_ids: number[]
         customer_note: string
       }
     >,
-    amount_tax: Number(computedAmountTax.toFixed(2)),
-    amount_total: Number(computedAmountTotal.toFixed(2)),
+    amount_tax: Math.round(computedAmountTax),
+    amount_total: Math.round(computedAmountTotal),
   }
 }
 
@@ -187,8 +210,8 @@ export function expandCartItems(cartItems: CartItem[]): OrderLineItem[] {
       subItemTotalExtra = childLines.reduce((sum, cl) => sum + (cl.list_price || 0), 0)
     }
 
-    // 2. Add Parent Line
-    const basePrice = Math.max(0, item.product.list_price - subItemTotalExtra)
+    // 2. Add Parent Line. The parent's list_price is fixed (e.g. 2000).
+    const basePrice = item.product.list_price || 0
     
     // Always add parent line for POS combos (it's the anchor)
     expanded.push({

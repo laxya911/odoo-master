@@ -3,6 +3,8 @@
 import React, { createContext, useContext, useState, useCallback } from 'react'
 import type { Product, CartItem, CartItemMeta } from '@/lib/types'
 import { useToast } from '@/hooks/use-toast'
+import { calculateItemPricing } from '@/lib/pricing-utils'
+import { useProducts } from './ProductContext'
 
 export interface LastOrder {
   id: string
@@ -24,8 +26,11 @@ interface CartContextType {
   cartCount: number
   isCartOpen: boolean
   setIsCartOpen: (isOpen: boolean) => void
+  isCheckoutOpen: boolean
+  setIsCheckoutOpen: (isOpen: boolean) => void
   hasOpenedAutomatically: boolean
   lastOrder: LastOrder | null
+  getCartBreakdown: () => { total: number; subtotal: number; tax: number }
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined)
@@ -41,6 +46,7 @@ export function useCart() {
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [cartItems, setCartItems] = useState<CartItem[]>([])
   const [isCartOpen, setIsCartOpen] = useState(false)
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false)
   const [hasOpenedAutomatically, setHasOpenedAutomatically] = useState(false)
   const [lastOrder, setLastOrder] = useState<LastOrder | null>(null)
   const { toast } = useToast()
@@ -63,7 +69,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           const comboB = meta?.combo_selections || []
           if (comboA.length !== comboB.length) return false
           for (let i = 0; i < comboA.length; i++) {
-            if (comboA[i].combo_line_id !== comboB[i]?.combo_line_id)
+            if (comboA[i].combo_id !== comboB[i]?.combo_id)
               return false
             const pidsA = comboA[i].product_ids.sort()
             const pidsB = (comboB[i]?.product_ids || []).sort()
@@ -138,12 +144,28 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     )
   }, [])
 
+  const { taxes, defaultTaxId } = useProducts()
+
+  const getCartBreakdown = useCallback(() => {
+    let total = 0
+    let tax = 0
+    let net = 0
+
+    cartItems.forEach((item) => {
+      const { totalPaid: lineTotal, totalTax: lineTax, netAmount: lineNet } =
+        calculateItemPricing(item.product, item.meta, taxes, defaultTaxId)
+
+      total += lineTotal * item.quantity
+      tax += lineTax * item.quantity
+      net += lineNet * item.quantity
+    })
+
+    return { total, subtotal: net, tax }
+  }, [cartItems, taxes, defaultTaxId])
+
   const getCartTotal = useCallback(() => {
-    return cartItems.reduce(
-      (total, item) => total + item.product.list_price * item.quantity,
-      0,
-    )
-  }, [cartItems])
+    return getCartBreakdown().total
+  }, [getCartBreakdown])
 
   const clearCart = useCallback(() => {
     // Capture last order before clearing if needed
@@ -182,8 +204,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     cartCount,
     isCartOpen,
     setIsCartOpen,
+    isCheckoutOpen,
+    setIsCheckoutOpen,
     hasOpenedAutomatically,
     lastOrder,
+    getCartBreakdown,
   }
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>

@@ -138,57 +138,19 @@ export async function POST(req: NextRequest) {
       const actualAmount = fromSmallestUnit(paymentIntent.amount, currency)
 
       for (const item of compactItems) {
-        let subItemTotalExtra = 0
-        const childLines: OrderLineItem[] = []
-
-        if (item.s && Array.isArray(item.s)) {
-          for (const s of item.s) {
-            const comboLineId = s.l
-            const itemIds = s.i || []
-            const productIds = s.p || []
-            const prices = s.e || []
-            const qtyFree = (s as any).q_f || 0
-
-            // Process items in selection order (index-based) so free quota applies correctly
-            for (let i = 0; i < itemIds.length; i++) {
-              const ciid = itemIds[i]
-              const pid = productIds[i]
-              const price = prices[i] || 0
-
-              // Items at index < qtyFree are free (list_price=0), rest are paid
-              let linePrice = 0
-              if (i >= qtyFree) {
-                // Beyond free quota - charge the full price
-                linePrice = price
-                subItemTotalExtra += linePrice
-              }
-              // else: item is free (linePrice stays 0)
-
-              childLines.push({
-                product_id: pid,
-                quantity: item.q,
-                list_price: linePrice,
-                combo_id: comboLineId, // This is the product.combo record ID from metadata
-                combo_item_id: ciid,
-                customer_note: '',
-              })
-            }
-          }
-        }
-
-        // Add parent line only if it has a non-zero price OR there are no child lines.
-        // A $0 combo parent without child lines fails Odoo's invoice display_type constraint.
-        const basePrice = Math.max(0, item.pr - subItemTotalExtra)
-        if (basePrice > 0 || childLines.length === 0) {
-          orderLines.push({
-            product_id: item.p,
-            quantity: item.q,
-            list_price: basePrice,
-            customer_note: item.n || '',
-          })
-        }
-        // Add child lines (always included — they carry the combo pricing)
-        orderLines.push(...childLines)
+        // The webhook now receives the final targeted inclusive price and tax IDs
+        // directly from the create/route.ts metadata. This ensures 100% consistency.
+        orderLines.push({
+          product_id: item.p,
+          quantity: item.q,
+          list_price: item.pr, // Exclusive base
+          price_unit_incl: item.pri, // TRUE targeted inclusive price
+          tax_ids: item.t || [], // Pre-mapped tax IDs
+          customer_note: item.n || '',
+          combo_id: item.c,
+          combo_item_id: item.ci,
+          attribute_value_ids: item.a,
+        } as any)
       }
 
       const fulfillmentPayload: OrderPayload = {

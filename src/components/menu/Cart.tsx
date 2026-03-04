@@ -17,7 +17,9 @@ import { useCompany } from '@/context/CompanyContext'
 import { useAuth } from '@/context/AuthContext'
 import { useRouter } from 'next/navigation'
 import { useSession } from '@/context/SessionContext'
+import { useProducts } from '@/context/ProductContext'
 import { CheckoutDialog } from './CheckoutDialog'
+import { calculateItemPricing } from '@/lib/pricing-utils'
 
 interface ProductTaxData {
   product_id: number
@@ -37,83 +39,22 @@ export function Cart() {
     removeFromCart,
     clearCart,
     setIsCartOpen,
+    isCheckoutOpen,
+    setIsCheckoutOpen,
+    getCartBreakdown,
   } = useCart()
-  const [isCheckoutOpen, setCheckoutOpen] = useState(false)
-  const [productTaxes, setProductTaxes] = useState<
-    Record<number, ProductTaxData>
-  >({})
   const { toast } = useToast()
   const { formatPrice } = useCompany()
   const { session } = useSession()
   const { isAuthenticated } = useAuth()
+  const { taxes, defaultTaxId } = useProducts()
   const router = useRouter()
-  const subtotal = getCartTotal()
 
-  // Fetch taxes for all products in cart
-  useEffect(() => {
-    if (cartItems.length === 0) return
+  const { total, subtotal, tax } = getCartBreakdown()
 
-    const productIds = Array.from(
-      new Set(cartItems.map((item) => item.product.id)),
-    )
-    const idsParam = productIds.join(',')
-
-    fetch(`/api/odoo/product-taxes?ids=${idsParam}`)
-      .then((r) => r.json())
-      .then((data) => {
-        const taxMap: Record<number, ProductTaxData> = {}
-        if (data.data) {
-          for (const item of data.data) {
-            taxMap[item.product_id] = item
-          }
-        }
-        setProductTaxes(taxMap)
-      })
-      .catch((err) => console.error('Failed to fetch product taxes:', err))
-  }, [cartItems])
-
-  // Calculate tax for a product (treating price as tax-included)
-  const calculateItemTax = (
-    productId: number,
-    quantity: number,
-    price: number,
-  ): number => {
-    const taxData = productTaxes[productId]
-    if (!taxData || taxData.taxes.length === 0) return 0
-
-    let totalTax = 0
-    for (const tax of taxData.taxes) {
-      if (typeof tax.amount === 'number') {
-        const rate = tax.amount / 100
-        // We treat ALL prices as tax-included for the customer's view.
-        // Tax Amount = Total - (Total / (1 + rate))
-        // This is valid whether Odoo thinks it's included or not, because we want
-        // the list_price to be the FINAL price.
-        const lineTotal = price * quantity
-        const taxAmount = lineTotal - lineTotal / (1 + rate)
-        totalTax += taxAmount
-      }
-    }
-    return Number(totalTax.toFixed(2))
-  }
-
-  // Calculate total tax for all items
-  const totalTax = useMemo(() => {
-    return cartItems.reduce((sum, item) => {
-      const itemTax = calculateItemTax(
-        item.product.id,
-        item.quantity,
-        item.product.list_price,
-      )
-      return sum + itemTax
-    }, 0)
-  }, [cartItems, calculateItemTax])
-
-
-  // In this new logic, getCartTotal() returns the sum of list_prices, which IS the final total.
-  const total = subtotal
-  // The displayed "Subtotal" should now be the Pre-Tax amount
-  const displaySubtotal = total - totalTax
+  // Map to variables used in JSX
+  const displaySubtotal = subtotal
+  const totalTax = tax
 
   // const handleNoteChange = useDebouncedCallback(
   //   (cartItemId: string, notes: string) => {
@@ -192,7 +133,7 @@ export function Cart() {
                       <div className="flex justify-between items-start">
                         <p className='font-semibold line-clamp-1 mr-2'>{item.product.name}</p>
                         <p className='font-bold text-accent-gold'>
-                          {formatPrice(item.product.list_price * item.quantity)}
+                          {formatPrice(calculateItemPricing(item.product, item.meta, taxes, defaultTaxId).totalPaid * item.quantity)}
                         </p>
                       </div>
                       <div className="space-y-0.5 mt-1">
@@ -281,7 +222,7 @@ export function Cart() {
                         )}
 
                         <p className="text-[11px] text-muted-foreground/60 mt-1">
-                          {formatPrice(item.product.list_price)} each
+                          {formatPrice(calculateItemPricing(item.product, item.meta, taxes, defaultTaxId).unitPrice)} each
                         </p>
                       </div>
                     </div>
@@ -361,7 +302,7 @@ export function Cart() {
                 router.push(`/auth?callbackUrl=${encodeURIComponent(window.location.href)}`)
                 return
               }
-              setCheckoutOpen(true)
+              setIsCheckoutOpen(true)
             }}
           >
             {!session.isOpen ? 'Store Closed' : 'Checkout'}
@@ -376,14 +317,6 @@ export function Cart() {
           </Button>
         </div>
       </div>
-      <CheckoutDialog
-        isOpen={isCheckoutOpen}
-        onClose={() => setCheckoutOpen(false)}
-        cartItems={cartItems}
-        total={total}
-        subtotal={displaySubtotal}
-        totalTax={totalTax}
-      />
     </>
   )
 }

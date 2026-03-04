@@ -59,7 +59,7 @@ export const CheckoutDialog = memo(
     const [clientSecret, setClientSecret] = useState<string | null>(null)
     const [creatingPaymentIntent, setCreatingPaymentIntent] = useState(false)
 
-    const { user, isAuthenticated } = useAuth()
+    const { user, isAuthenticated, refreshUser } = useAuth()
     const { clearCart } = useCart()
     const router = useRouter()
     const {
@@ -125,6 +125,8 @@ export const CheckoutDialog = memo(
         setCreatingPaymentIntent(true)
 
         try {
+          const paymentIntentId = clientSecret ? clientSecret.split('_secret_')[0] : undefined
+
           const response = await fetch('/api/payment/create', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -133,6 +135,7 @@ export const CheckoutDialog = memo(
               customer: form.getValues(),
               orderType: form.getValues('orderType'),
               customer_note: form.getValues('notes'),
+              paymentIntentId,
             }),
           })
 
@@ -183,6 +186,8 @@ export const CheckoutDialog = memo(
 
     const [savedPiSuffix, setSavedPiSuffix] = useState<string | null>(null)
 
+    const { setIsCartOpen } = useCart()
+
     const handleCheckoutSuccess = () => {
       // preserve suffix before clearing the cart/secret
       const suffix = clientSecret ? clientSecret.split('_')[1]?.slice(-6) : null
@@ -192,6 +197,7 @@ export const CheckoutDialog = memo(
       setClientSecret(null)
       setCurrentStep('success')
       clearCart()
+      setIsCartOpen(false) // Auto-close drawer on success
     }
 
     // Poll for the created order once payment is successful
@@ -221,6 +227,10 @@ export const CheckoutDialog = memo(
               setPlacedOrderRef(latestOrder.pos_reference)
               // clear stored suffix once we have a result to avoid reuse later
               setSavedPiSuffix(null)
+
+              // Refresh user data so the new address persists in current session
+              refreshUser()
+
               clearInterval(pollInterval)
             }
           } catch (err) {
@@ -238,7 +248,7 @@ export const CheckoutDialog = memo(
       return () => {
         if (pollInterval) clearInterval(pollInterval)
       }
-    }, [currentStep, placedOrderRef, form, clientSecret])
+    }, [currentStep, placedOrderRef, form, clientSecret, savedPiSuffix])
 
     const handleClose = () => {
       setCurrentStep('personal')

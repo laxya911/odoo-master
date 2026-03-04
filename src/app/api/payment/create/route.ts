@@ -100,21 +100,22 @@ export async function POST(req: NextRequest) {
 
     // 6. Create PaymentIntent
     // Webhook needs to reconstruct the EXACT same expanded lines.
-    // We store the ORIGINAL cart items in metadata but compacted.
-    // Create a compact, safe string representation of line items to store in
-    // Stripe metadata (avoid embedding large JSON which may exceed metadata limits).
-    const compactItems = body.cart.items.map((item) => ({
-      p: item.product.id,
-      q: item.quantity,
-      pr: item.product.list_price,
-      n: item.notes || item.meta?.notes || '',
-      s: item.meta?.combo_selections?.map((s) => ({
-        l: (s as any).combo_id || (s as any).combo_line_id || 0,
-        i: s.combo_item_ids,
-        p: s.product_ids,
-        e: s.extra_prices,
-        q_f: s.qty_free || 0,
-      })),
+    // We store the expanded lines directly to avoid mismatch between frontend cart
+    // representations (which include tax) and backend expected base prices.
+
+    // Limit to essentials to fit in Stripe metadata limits
+    const { lines: processedLines } = await calculateOrderTotal(orderLines)
+
+    const compactItems = processedLines.map((line) => ({
+      p: line.product_id,
+      q: line.quantity,
+      pr: line.list_price, // Exclusive base
+      pri: line.price_unit_incl, // TRUE targeted inclusive price
+      t: line.tax_ids, // Correctly mapped tax IDs (including fallback)
+      n: line.customer_note || '',
+      c: line.combo_id,
+      ci: line.combo_item_id,
+      a: line.attribute_value_ids,
     }))
 
     // Build a compact string like "pid,q,pr;pid2,q2,pr2;..." for reliable metadata storage
@@ -147,13 +148,35 @@ export async function POST(req: NextRequest) {
     // Fallback for very basic tracking (legacy)
     metadata.line_items_str = compactString.slice(0, 500)
 
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: amountInSmallestUnit,
-      currency: currency,
-      customer: customerId,
-      automatic_payment_methods: { enabled: true },
-      metadata: metadata,
-    })
+    let paymentIntent
+
+    if (body.paymentIntentId) {
+      try {
+        paymentIntent = await stripe.paymentIntents.update(body.paymentIntentId, {
+          amount: amountInSmallestUnit,
+          currency: currency,
+          metadata: metadata,
+          customer: customerId,
+        })
+      } catch (updateErr: any) {
+        console.warn(`[API /payment/create] Failed to update PaymentIntent ${body.paymentIntentId}, creating new one instead. Error: ${updateErr.message}`)
+        paymentIntent = await stripe.paymentIntents.create({
+          amount: amountInSmallestUnit,
+          currency: currency,
+          customer: customerId,
+          automatic_payment_methods: { enabled: true },
+          metadata: metadata,
+        })
+      }
+    } else {
+      paymentIntent = await stripe.paymentIntents.create({
+        amount: amountInSmallestUnit,
+        currency: currency,
+        customer: customerId,
+        automatic_payment_methods: { enabled: true },
+        metadata: metadata,
+      })
+    }
 
     return NextResponse.json({
       clientSecret: paymentIntent.client_secret,

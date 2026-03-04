@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { useCart } from '@/context/CartContext'
 import { useCompany } from '@/context/CompanyContext'
 import { useSession } from '@/context/SessionContext'
+import { useProducts } from '@/context/ProductContext'
 
 interface ProductConfiguratorProps {
   product: Product
@@ -23,6 +24,7 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
   const { addToCart } = useCart()
   const { formatPrice } = useCompany()
   const { session } = useSession()
+  const { taxes, getInclusivePrice, defaultTaxId } = useProducts()
 
   // Use attributes if available
   const attributes = useMemo(
@@ -67,7 +69,7 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
       // user must actively make all selections.
       if (
         line.required &&
-        line.product_ids.length > 0 &&
+        line.product_ids?.length > 0 &&
         (line.max_item || 1) === 1
       ) {
         initial[line.id] = [line.product_ids[0]]
@@ -148,60 +150,81 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
       )
     })
 
-    // Add combo prices (top-level), respecting qty_free for free items
+    // Add combo prices (top-level), respecting Odoo 19 "Prorating" heuristic
     comboLines.forEach((line: ComboLine) => {
       const selectedIds = comboSelections[line.id] || []
-      const qtyFree = line.included_item || 0
+      const categoryBasePrice = line.base_price || 0
+      const qtyFreeTotal = line.included_item || 0
 
-      // Iterate through selected IDs in selection order (not product definition order)
-      // so we can apply free quota to the first N selections
-      selectedIds.forEach((selectedPid, selectionIndex) => {
+      // Odoo 19 Prorating Heuristic:
+      // 1. Items with extra_price >= categoryBasePrice are "Full Price Add-ons"
+      //    They do NOT consume free slots but always charge their extra_price.
+      // 2. Items with extra_price < categoryBasePrice are "Quota Items"
+      //    They consume free slots. Excess Quota Items charge categoryBasePrice + extra_price.
+
+      let quotaItemsCount = 0
+
+      selectedIds.forEach((selectedPid) => {
         const p = line.products?.find((prod) => prod.id === selectedPid)
-        if (p) {
-          total += p.extra_price || 0
-          // If this selection index is within the free quota, it's free
-          if (selectionIndex < qtyFree) {
-            // This item is free - don't add its base price
-          } else {
-            // Beyond free quota - charge full price
-            total += p.list_price || 0
+        if (!p) return
+
+        const itemUpcharge = p.extra_price || 0
+        const isQuotaItem = itemUpcharge < categoryBasePrice
+
+        total += itemUpcharge
+
+        if (isQuotaItem) {
+          quotaItemsCount++
+          if (quotaItemsCount > qtyFreeTotal) {
+            // Beyond free quota - charge Odoo product.combo base_price
+            total += categoryBasePrice
           }
+        }
 
-          // Add attribute prices for this combo item
-          p.attributes?.forEach((attr: ProductAttribute) => {
-            const attrKey = `${line.id}-${selectedPid}-attr`
-            const selectedAttrIds =
-              comboItemAttributes[attrKey]?.[attr.id] || []
-            attr.values.forEach(
-              (val: { id: number; name: string; price_extra?: number }) => {
-                if (selectedAttrIds.includes(val.id))
-                  total += val.price_extra || 0
-              },
-            )
-          })
+        // Add attribute prices for this combo item
+        p.attributes?.forEach((attr: ProductAttribute) => {
+          const attrKey = `${line.id}-${selectedPid}-attr`
+          const selectedAttrIds =
+            comboItemAttributes[attrKey]?.[attr.id] || []
+          attr.values.forEach(
+            (val: { id: number; name: string; price_extra?: number }) => {
+              if (selectedAttrIds.includes(val.id))
+                total += val.price_extra || 0
+            },
+          )
+        })
 
-          // Add nested sub-combo prices
-          if (p.combo_lines) {
-            const nestedKey = `${line.id}-${selectedPid}`
-            const subSels = nestedSelections[nestedKey] || {}
-            p.combo_lines.forEach((subLine: ComboLine) => {
-              const subSelectedIds = subSels[subLine.id] || []
-              subLine.products?.forEach((sp: Product) => {
-                if (subSelectedIds.includes(sp.id)) {
-                  total += sp.extra_price || 0
-                  const spIndex = subSelectedIds.indexOf(sp.id)
-                  if (spIndex >= (subLine.included_item || 0)) {
-                    total += sp.list_price || 0
-                  }
+        // Add nested sub-combo prices
+        if (p.combo_lines) {
+          const nestedKey = `${line.id}-${selectedPid}`
+          const subSels = nestedSelections[nestedKey] || {}
+          p.combo_lines.forEach((subLine: ComboLine) => {
+            const subSelectedIds = subSels[subLine.id] || []
+            const subCatBase = subLine.base_price || 0
+            const subQtyFree = subLine.included_item || 0
+            let subQuotaCount = 0
+
+            // Apply same prorating logic recursively to sub-combos
+            subSelectedIds.forEach((subPid) => {
+              const sp = subLine.products?.find((s) => s.id === subPid)
+              if (!sp) return
+
+              const subUpcharge = sp.extra_price || 0
+              total += subUpcharge
+
+              if (subUpcharge < subCatBase) {
+                subQuotaCount++
+                if (subQuotaCount > subQtyFree) {
+                  total += subCatBase
                 }
-              })
+              }
             })
-          }
+          })
         }
       })
     })
 
-    return total
+    return getInclusivePrice(product, total)
   }, [
     product,
     configSelections,
@@ -219,7 +242,7 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
         const line = comboLines.find((l) => l.id === parseInt(lineId))
 
         const linkage = productIds
-          .map((pid) => {
+          .map((pid, pIndex) => {
             const prodMatch = line?.products?.find((p) => p.id === pid)
 
             // Gather attribute selections for this combo item
@@ -238,11 +261,15 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                   (sl) => sl.id === parseInt(subLineId),
                 )
                 const subLinkage = subPids
-                  .map((spid) => {
+                  .map((spid, spIndex) => {
                     const sp = subLine?.products?.find((s) => s.id === spid)
+                    let subExtraPrice = sp?.extra_price || 0
+                    if (spIndex >= (subLine?.included_item || 0)) {
+                      subExtraPrice += subLine?.base_price || 0
+                    }
                     return {
                       combo_item_id: sp?.combo_item_id,
-                      extra_price: sp?.extra_price || 0,
+                      extra_price: subExtraPrice,
                     }
                   })
                   .filter((l) => l.combo_item_id !== undefined)
@@ -256,9 +283,29 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                 }
               })
 
+            // Apply Odoo 19 Prorating to extraction logic
+            const itemUpcharge = prodMatch?.extra_price || 0
+            const comboLineBasePrice = line?.base_price || 0
+            const isQuotaItem = itemUpcharge < comboLineBasePrice
+
+            let extraPrice = itemUpcharge
+            if (isQuotaItem) {
+              // Only count quota items towards free slots
+              // (Note: This assumes we track the order in this scope. 
+              // Since handleAddToCart iterates in order, we can maintain a counter or use pIndex 
+              // if we filter the productIds first. Let's filter to be safe.)
+              const quotaIdsBefore = productIds.slice(0, pIndex).filter(id => {
+                const match = line?.products?.find(p => p.id === id)
+                return (match?.extra_price || 0) < comboLineBasePrice
+              })
+              if (quotaIdsBefore.length >= (line?.included_item || 0)) {
+                extraPrice += comboLineBasePrice
+              }
+            }
+
             return {
               combo_item_id: prodMatch?.combo_item_id,
-              extra_price: prodMatch?.extra_price || 0,
+              extra_price: extraPrice,
               attribute_value_ids:
                 combo_item_attribute_ids.length > 0
                   ? combo_item_attribute_ids
@@ -283,7 +330,8 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
 
     const productWithPrice: Product = {
       ...product,
-      list_price: currentConfigPrice,
+      // We keep list_price as base price. 
+      // The total config including extras will be reflected in the final order line.
     }
 
     addToCart(productWithPrice, 1, {
@@ -414,8 +462,13 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                         const selectedCount = (comboSelections[line.id] || [])
                           .length
                         if ((line.included_item || 0) > 0) {
-                          // 'included_item' now maps to qty_free from Odoo
-                          return `${selectedCount}/${line.included_item} free`
+                          // Filter selected items to only count those that consume a slot
+                          const quotaItemsSelectedCount = (comboSelections[line.id] || [])
+                            .filter(pid => {
+                              const p = line.products?.find(prod => prod.id === pid)
+                              return (p?.extra_price || 0) < (line.base_price || 0)
+                            }).length
+                          return `${quotaItemsSelectedCount}/${line.included_item} free`
                         }
                         // Fallback show max if >1
                         if ((line.max_item || 1) > 1) {
