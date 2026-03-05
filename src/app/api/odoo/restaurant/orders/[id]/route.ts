@@ -33,7 +33,7 @@ export async function GET(
     const lineIds = order.lines as number[]
     const lines = await odooCall<any[]>('pos.order.line', 'read', {
       ids: lineIds,
-      fields: ['id', 'product_id', 'qty', 'price_unit', 'price_subtotal', 'price_subtotal_incl', 'note'],
+      fields: ['id', 'product_id', 'full_product_name', 'qty', 'price_unit', 'price_subtotal', 'price_subtotal_incl', 'note', 'customer_note'],
     })
 
     // 3. Get Partner details for address

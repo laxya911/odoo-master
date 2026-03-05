@@ -238,9 +238,10 @@ export async function fulfillOdooOrder(
       const vals: any = {
         product_id: line.product_id,
         qty: line.quantity,
-        // Odoo 19 POS with iface_tax_included: total interprets price_unit as the TARGET INCLUSIVE price.
-        // We send the inclusive unit price to ensure the final total matches Stripe exactly.
-        price_unit: (line as any).price_unit_incl || line.list_price,
+        // The product's tax is EXCLUSIVE (price_include: false, 10%).
+        // Odoo adds tax ON TOP of price_unit, so we must send the pre-tax base price.
+        // Sending the inclusive price here caused double taxation (e.g. 5280 → 5808).
+        price_unit: line.list_price,
         price_subtotal: line.price_subtotal || 0,
         price_subtotal_incl: line.price_subtotal_incl || 0,
         tax_ids: line.tax_ids && line.tax_ids.length > 0 ? [[6, 0, line.tax_ids]] : [],

@@ -206,7 +206,7 @@ export default function DynamicTrackOrderPage() {
                         <ScrollArea className="max-h-[400px]">
                             <CardContent className="p-8 pb-4 space-y-6">
                                 <div className="space-y-5">
-                                    {order.line_items?.map((item: { qty: number; full_product_name?: string; product_id?: [number, string]; note?: string; price_subtotal_incl: number }, idx: number) => (
+                                    {order.line_items?.map((item: { qty: number; full_product_name?: string; product_id?: [number, string]; note?: string; customer_note?: string; price_subtotal_incl: number }, idx: number) => (
                                         <div key={idx} className="flex justify-between items-start gap-4">
                                             <div className="space-y-1 flex-1">
                                                 <div className="flex items-center gap-2">
@@ -215,11 +215,30 @@ export default function DynamicTrackOrderPage() {
                                                         {item.full_product_name || (item.product_id && item.product_id[1]) || 'Unknown Product'}
                                                     </p>
                                                 </div>
-                                                {item.note && (
-                                                    <p className="text-[10px] text-neutral-500 uppercase tracking-tighter ml-7 mt-1 leading-relaxed whitespace-pre-line font-medium italic">
-                                                        Note: {item.note}
-                                                    </p>
-                                                )}
+                                                {(item.customer_note || item.note) && (() => {
+                                                    // Prefer customer_note (plain text). Fall back to parsing note (JSON format).
+                                                    let noteText = '';
+                                                    if (item.customer_note) {
+                                                        noteText = item.customer_note.replace(/^Note:\s*/i, '');
+                                                    } else if (item.note) {
+                                                        try {
+                                                            const parsed = JSON.parse(item.note);
+                                                            if (Array.isArray(parsed)) {
+                                                                noteText = parsed.map((n: any) => n.note || '').filter(Boolean).join(', ');
+                                                            } else {
+                                                                noteText = item.note;
+                                                            }
+                                                        } catch {
+                                                            // Not JSON — strip "Note: " prefix if present
+                                                            noteText = item.note.replace(/^Note:\s*/i, '');
+                                                        }
+                                                    }
+                                                    return noteText ? (
+                                                        <p className="text-[10px] text-neutral-500 uppercase tracking-tighter ml-7 mt-1 leading-relaxed whitespace-pre-line font-medium italic">
+                                                            Note: {noteText}
+                                                        </p>
+                                                    ) : null;
+                                                })()}
                                             </div>
                                             <span className="text-sm font-bold text-neutral-900 pr-2">
                                                 {formatPrice(item.price_subtotal_incl)}
