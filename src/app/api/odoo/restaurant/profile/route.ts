@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     const domain: any[] = partnerId ? [['id', '=', partnerId]] : [['email', '=', email]]
     const partners = await odooCall<Partner[]>('res.partner', 'search_read', {
       domain,
-      fields: ['id', 'name', 'email', 'phone', 'street', 'city', 'zip', 'image_1920'],
+      fields: ['id', 'name', 'email', 'phone', 'street', 'city', 'zip', 'state_id', 'country_id', 'image_1920'],
       limit: 1,
     })
 

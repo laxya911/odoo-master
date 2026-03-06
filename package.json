@@ -47,6 +47,8 @@
     "firebase": "^12.9.0",
     "framer-motion": "^12.34.0",
     "jose": "^6.1.3",
+    "jspdf": "^4.2.0",
+    "jspdf-autotable": "^5.0.7",
     "lucide-react": "^0.564.0",
     "next": "16.1.6",
     "patch-package": "^8.0.1",

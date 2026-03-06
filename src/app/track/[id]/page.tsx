@@ -14,6 +14,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useCompany } from '@/context/CompanyContext';
+import { generateInvoice } from '@/lib/pdf-invoice';
 
 type OrderStatus = 'received' | 'preparing' | 'ready' | 'delivering' | 'delivered';
 
@@ -198,10 +199,20 @@ export default function DynamicTrackOrderPage() {
                 {/* Right: Order Summary */}
                 <div className="space-y-8">
                     <Card className="rounded-[2.5rem] border-none shadow-2xl sticky top-24 bg-white overflow-hidden">
-                        <div className="p-8 bg-neutral-50 border-b">
+                        <div className="p-8 bg-neutral-50 border-b flex justify-between items-center">
                             <h3 className="font-headline text-primary text-2xl flex items-center gap-3">
                                 <Receipt className="text-accent-gold" /> <span className="text-neutral-900 font-bold">Items Summary</span>
                             </h3>
+                            {order && ['paid', 'done', 'invoiced'].includes(order.state) && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="rounded-full border-neutral-200 text-neutral-600 hover:text-accent-gold hover:border-accent-gold/20"
+                                    onClick={() => generateInvoice({ order })}
+                                >
+                                    Download Invoice
+                                </Button>
+                            )}
                         </div>
                         <ScrollArea className="max-h-[400px]">
                             <CardContent className="p-8 pb-4 space-y-6">

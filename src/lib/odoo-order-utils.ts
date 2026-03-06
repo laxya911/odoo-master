@@ -214,15 +214,29 @@ export function expandCartItems(cartItems: CartItem[]): OrderLineItem[] {
     const basePrice = item.product.list_price || 0
     
     // Always add parent line for POS combos (it's the anchor)
+    // We initially set list_price to 0 for combo parents. If it turns out it's NOT a combo
+    // (no child lines), we immediately restore it.
     expanded.push({
       product_id: item.product.id,
       quantity: item.quantity,
-      list_price: basePrice,
+      list_price: 0, 
       attribute_value_ids: item.meta?.attribute_value_ids,
       customer_note: item.notes || item.meta?.notes || '',
     })
 
-    // 3. Add Child Lines
+    // 3. Add Child Lines and shift price
+    if (childLines.length > 0) {
+      // FIX for Odoo Accounting Display Type Validation Error:
+      // Combo parents usually do not have income accounts configured in Odoo.
+      // Odoo POS native dynamically fractions the parent's $2000 price over the child lines ($927, $927, $146 etc)
+      // to generate valid journal items using the children's accounts.
+      // We replicate this safely by just shifting the parent's basePrice to the first child.
+      childLines[0].list_price = (childLines[0].list_price || 0) + basePrice;
+    } else {
+      // It's a standard product without combo children. Restore base price.
+      expanded[expanded.length - 1].list_price = basePrice;
+    }
+
     expanded.push(...childLines)
   }
 

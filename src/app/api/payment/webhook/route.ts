@@ -153,6 +153,26 @@ export async function POST(req: NextRequest) {
         } as any)
       }
 
+      let cardDetails: OrderPayload['stripeCardDetails'] = undefined
+      try {
+        const expandedIntent = await stripe.paymentIntents.retrieve(paymentIntent.id, {
+          expand: ['latest_charge'],
+        })
+        const charge = expandedIntent.latest_charge as Stripe.Charge | null
+        if (charge && charge.payment_method_details?.card) {
+          const card = charge.payment_method_details.card
+          cardDetails = {
+            card_brand: card.brand || undefined,
+            card_no: `**** **** **** ${card.last4}`,
+            card_type: card.funding || undefined,
+            cardholder_name: charge.billing_details?.name || undefined,
+            transaction_id: paymentIntent.id,
+          }
+        }
+      } catch (e) {
+        console.error('⚠️ [Webhook] Failed to fetch expanded PaymentIntent for card details:', e)
+      }
+
       const fulfillmentPayload: OrderPayload = {
         orderLines,
         customer: {
@@ -169,6 +189,7 @@ export async function POST(req: NextRequest) {
           'delivery',
         customer_note: metadata.notes || '',
         total: actualAmount,
+        stripeCardDetails: cardDetails,
       }
 
       console.log('🚀 [Webhook] Triggering Odoo Fulfillment...')

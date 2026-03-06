@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
 async function handleUpdate(request: NextRequest) {
   try {
     const payload = await request.json()
-    const { email, name, phone, street, city, zip, image_1920 } = payload
+    const { email, name, phone, street, city, zip, state_id, country_id, image_1920 } = payload
 
     if (!email) {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 })
@@ -41,6 +41,8 @@ async function handleUpdate(request: NextRequest) {
     if (street) vals.street = street
     if (city) vals.city = city
     if (zip) vals.zip = zip
+    if (state_id) vals.state_id = state_id
+    if (country_id) vals.country_id = country_id
     if (image_1920) vals.image_1920 = image_1920
 
     if (Object.keys(vals).length === 0) {

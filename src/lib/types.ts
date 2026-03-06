@@ -149,6 +149,7 @@ export type Partner = OdooRecord & {
   zip?: string | false
   image_1920?: string | false
   country_id?: [number, string] | false
+  state_id?: [number, string] | false
   total_spent?: number
 }
 
@@ -175,6 +176,13 @@ export type OrderPayload = {
   orderType: 'dine-in' | 'delivery' | 'takeout'
   customer_note?: string
   total: number
+  stripeCardDetails?: {
+    card_type?: string
+    card_brand?: string
+    card_no?: string
+    cardholder_name?: string
+    transaction_id?: string
+  }
 }
 
 // Payment Architecture & Webhook Event DTOs

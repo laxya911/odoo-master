@@ -83,20 +83,23 @@ export const CheckoutDialog = memo(
       },
     })
 
-    // Prefill user details if authenticated
+    // Prefill user details from Odoo database when dialog opens
     useEffect(() => {
-      if (isAuthenticated && user && isOpen) {
+      if (isOpen) {
+        // Always start with clean defaults, then apply fresh user data from Odoo
         form.reset({
-          ...form.getValues(),
-          name: user.name || '',
-          email: user.email || '',
-          phone: user.phone || '',
-          street: user.street || '',
-          city: user.city || '',
-          zip: user.zip || '',
+          name: (isAuthenticated && user?.name) || '',
+          email: (isAuthenticated && user?.email) || '',
+          phone: (isAuthenticated && user?.phone) || '',
+          street: (isAuthenticated && user?.street) || '',
+          city: (isAuthenticated && user?.city) || '',
+          zip: (isAuthenticated && user?.zip) || '',
+          orderType: 'delivery',
+          tableNumber: '',
+          notes: '', // Always clear notes for a fresh order
         })
       }
-    }, [isAuthenticated, user, isOpen, form])
+    }, [isOpen]) // Only re-run when dialog opens — not on user/form changes
 
     // Memoize cart signature to avoid unnecessary payment intent creation
     const cartSignature = useMemo(() => {
@@ -255,6 +258,18 @@ export const CheckoutDialog = memo(
       setPlacedOrderId(null)
       setPlacedOrderRef(null)
       setClientSecret(null)
+      // Reset form to prevent stale notes/data from persisting
+      form.reset({
+        name: user?.name || '',
+        email: user?.email || '',
+        phone: user?.phone || '',
+        street: user?.street || '',
+        city: user?.city || '',
+        zip: user?.zip || '',
+        orderType: 'delivery',
+        tableNumber: '',
+        notes: '',
+      })
       onClose()
     }
 

@@ -10,8 +10,10 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import Link from 'next/link';
-import { Package, MapPin, Clock, ChevronRight, User, LogOut, Edit3, Save, X, Camera, RefreshCw, Mail, Phone, ShieldCheck, Loader2 } from 'lucide-react';
+import { Package, MapPin, Clock, ChevronRight, User, LogOut, Edit3, Save, X, Camera, RefreshCw, Mail, Phone, ShieldCheck, Loader2, Receipt } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { generateInvoice } from '@/lib/pdf-invoice';
 import { toast } from 'sonner';
 import type { Partner, PosOrder } from '@/lib/types';
 import Image from 'next/image';
@@ -34,14 +36,50 @@ export default function ProfilePage() {
         street: '',
         city: '',
         zip: '',
-        country_string: '',
+        country_id: '' as string | number,
+        state_id: '' as string | number,
         image_1920: ''
     });
+
+    const [countries, setCountries] = useState<Array<{ id: number; name: string }>>([]);
+    const [states, setStates] = useState<Array<{ id: number; name: string; code: string }>>([]);
 
     // Initial state to track changes
     const [initialFormData, setInitialFormData] = useState<typeof formData | null>(null);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Fetch countries
+    useEffect(() => {
+        const fetchCountries = async () => {
+            try {
+                const res = await fetch('/api/odoo/countries');
+                const data = await res.json();
+                setCountries(data.countries || []);
+            } catch (error) {
+                console.error('Failed to fetch countries:', error);
+            }
+        };
+        fetchCountries();
+    }, []);
+
+    // Fetch states when country changes
+    useEffect(() => {
+        const fetchStates = async () => {
+            if (!formData.country_id) {
+                setStates([]);
+                return;
+            }
+            try {
+                const res = await fetch(`/api/odoo/states?country_id=${formData.country_id}`);
+                const data = await res.json();
+                setStates(data.states || []);
+            } catch (error) {
+                console.error('Failed to fetch states:', error);
+            }
+        };
+        fetchStates();
+    }, [formData.country_id]);
 
     useEffect(() => {
         if (!authLoading && !user) {
@@ -88,7 +126,8 @@ export default function ProfilePage() {
                 street: partner.street || '',
                 city: partner.city || '',
                 zip: partner.zip || '',
-                country_string: Array.isArray(partner.country_id) ? partner.country_id[1] : '',
+                country_id: Array.isArray(partner.country_id) ? partner.country_id[0] : '',
+                state_id: Array.isArray(partner.state_id) ? partner.state_id[0] : '',
                 image_1920: partner.image_1920 ? `data:image/png;base64,${partner.image_1920}` : ''
             };
             setFormData(initial);
@@ -141,6 +180,8 @@ export default function ProfilePage() {
             if (formData.street !== initialFormData?.street) changedFields.street = formData.street;
             if (formData.city !== initialFormData?.city) changedFields.city = formData.city;
             if (formData.zip !== initialFormData?.zip) changedFields.zip = formData.zip;
+            if (formData.country_id !== initialFormData?.country_id) changedFields.country_id = formData.country_id;
+            if (formData.state_id !== initialFormData?.state_id) changedFields.state_id = formData.state_id;
 
             // Handle image specifically: strip 'data:image/...;base64,' prefix
             if (formData.image_1920 !== initialFormData?.image_1920) {
@@ -172,6 +213,24 @@ export default function ProfilePage() {
             toast.error('Error updating profile');
         } finally {
             setIsSaving(false);
+        }
+    };
+
+    const handleDownloadInvoice = async (orderId: string | number, posReference: string | undefined) => {
+        const toastId = toast.loading(`Preparing invoice ${posReference || ''}...`);
+        try {
+            const res = await fetch(`/api/odoo/restaurant/orders/${orderId}`);
+            if (!res.ok) throw new Error('Failed to fetch order details');
+            const data = await res.json();
+            if (data.order) {
+                generateInvoice(data);
+                toast.success('Invoice downloaded', { id: toastId });
+            } else {
+                throw new Error('Invalid order data');
+            }
+        } catch (error) {
+            console.error('Error generating invoice:', error);
+            toast.error('Failed to generate invoice', { id: toastId });
         }
     };
 
@@ -366,16 +425,40 @@ export default function ProfilePage() {
                                                             />
                                                         </div>
                                                     </div>
-                                                    <div className="space-y-1">
-                                                        <Label className="text-[9px] uppercase font-bold text-neutral-400">Country</Label>
-                                                        <Input
-                                                            value={formData.country_string}
-                                                            onChange={e => setFormData(p => ({ ...p, country_string: e.target.value }))}
-                                                            placeholder="Country"
-                                                            className="h-8 rounded-lg text-xs border-neutral-200 focus:border-accent-gold"
-                                                            disabled
-                                                        />
-                                                        <p className="text-[8px] text-neutral-400 italic">Country managed by Odoo</p>
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <div className="space-y-1">
+                                                            <Label className="text-[9px] uppercase font-bold text-neutral-400">Country</Label>
+                                                            <Select
+                                                                value={formData.country_id ? formData.country_id.toString() : ""}
+                                                                onValueChange={val => setFormData(p => ({ ...p, country_id: parseInt(val, 10), state_id: '' }))}
+                                                            >
+                                                                <SelectTrigger className="h-8 rounded-lg text-xs border-neutral-200 focus:border-accent-gold">
+                                                                    <SelectValue placeholder="Select Country" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    {countries.map(c => (
+                                                                        <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <Label className="text-[9px] uppercase font-bold text-neutral-400">State / Province</Label>
+                                                            <Select
+                                                                value={formData.state_id ? formData.state_id.toString() : ""}
+                                                                onValueChange={val => setFormData(p => ({ ...p, state_id: parseInt(val, 10) }))}
+                                                                disabled={!formData.country_id || states.length === 0}
+                                                            >
+                                                                <SelectTrigger className="h-8 rounded-lg text-xs border-neutral-200 focus:border-accent-gold">
+                                                                    <SelectValue placeholder={states.length === 0 && formData.country_id ? "No states" : "Select State"} />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    {states.map(s => (
+                                                                        <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             ) : (
@@ -383,9 +466,9 @@ export default function ProfilePage() {
                                                     <p className="text-sm font-bold text-neutral-900 leading-relaxed">
                                                         {userDetails?.street || 'No address saved'}
                                                     </p>
-                                                    {(userDetails?.city || userDetails?.zip) && (
+                                                    {(userDetails?.city || userDetails?.zip || Array.isArray(userDetails?.state_id)) && (
                                                         <p className="text-xs font-medium text-neutral-500">
-                                                            {userDetails.city}{userDetails.city && userDetails.zip ? ', ' : ''}{userDetails.zip}
+                                                            {[userDetails?.city, Array.isArray(userDetails?.state_id) ? userDetails.state_id[1] : '', userDetails?.zip].filter(Boolean).join(', ')}
                                                         </p>
                                                     )}
                                                     {Array.isArray(userDetails?.country_id) && (
@@ -439,14 +522,27 @@ export default function ProfilePage() {
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <div className="text-right">
+                                                <div className="text-right flex flex-col items-end gap-2">
                                                     <p className="text-lg font-bold text-neutral-900">{formatPrice(order.amount_total)}</p>
-                                                    <Link
-                                                        href={`/track/${order.pos_reference || order.id}`}
-                                                        className="text-xs font-bold text-accent-gold mt-2 flex items-center gap-1 ml-auto opacity-70 group-hover:opacity-100 transition-opacity hover:underline"
-                                                    >
-                                                        Details <ChevronRight size={14} />
-                                                    </Link>
+                                                    <div className="flex items-center gap-3 mt-1">
+                                                        {['paid', 'done', 'invoiced'].includes(order.state) && (
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.preventDefault();
+                                                                    handleDownloadInvoice(order.id, order.pos_reference || order.name);
+                                                                }}
+                                                                className="text-xs font-bold text-neutral-500 flex items-center gap-1 opacity-70 group-hover:opacity-100 transition-opacity hover:text-accent-gold"
+                                                            >
+                                                                <Receipt size={14} /> PDF
+                                                            </button>
+                                                        )}
+                                                        <Link
+                                                            href={`/track/${order.pos_reference || order.id}`}
+                                                            className="text-xs font-bold text-accent-gold flex items-center gap-1 opacity-70 group-hover:opacity-100 transition-opacity hover:underline"
+                                                        >
+                                                            Details <ChevronRight size={14} />
+                                                        </Link>
+                                                    </div>
                                                 </div>
                                             </div>
                                         ))}

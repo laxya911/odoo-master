@@ -241,10 +241,17 @@ export async function fulfillOdooOrder(
         // The product's tax is EXCLUSIVE (price_include: false, 10%).
         // Odoo adds tax ON TOP of price_unit, so we must send the pre-tax base price.
         // Sending the inclusive price here caused double taxation (e.g. 5280 → 5808).
-        price_unit: line.list_price,
+        // FIX for Display Type Validation Error:
+        // Odoo accounting (`account.move.line`) throws an error if `price_unit` is strictly 0 without an explicit display type.
+        // If it's a child combo item and the price is 0, we must supply 0 but signal it's a discount/combo element.
+        // Better yet, Odoo 19 `pos.order.line` has `is_combo_line` or ignores accounting lines if they aren't revenue generating.
+        price_unit: line.list_price || 0,
         price_subtotal: line.price_subtotal || 0,
         price_subtotal_incl: line.price_subtotal_incl || 0,
-        tax_ids: line.tax_ids && line.tax_ids.length > 0 ? [[6, 0, line.tax_ids]] : [],
+        tax_ids:
+          line.tax_ids && line.tax_ids.length > 0 && (line.list_price || 0) > 0
+            ? [[6, 0, line.tax_ids]]
+            : [],
         customer_note: line.customer_note || '',
         note: line.customer_note
           ? JSON.stringify([{ note: line.customer_note, colorIndex: 9 }])
@@ -277,11 +284,6 @@ export async function fulfillOdooOrder(
     api_order_notes: (typeof notes === 'string' && notes.trim()) ? notes.trim() : '',
   }
 
-  // 5. Create POS Order
-  console.log(
-    `🚀 [Fulfillment] Creating POS Order for Partner ID: ${partnerId}...`,
-  )
-  console.log('[Fulfillment] Order Data:', JSON.stringify(orderData, null, 2))
   // 5. Create POS Order
   console.log(
     `🚀 [Fulfillment] Creating POS Order for Partner ID: ${partnerId}...`,
@@ -380,6 +382,13 @@ export async function fulfillOdooOrder(
         pos_order_id: orderId,
         amount: orderBreakdown.amount_total,
         payment_method_id: paymentMethodId,
+        ...(payload.stripeCardDetails ? {
+          card_type: payload.stripeCardDetails.card_type,
+          card_brand: payload.stripeCardDetails.card_brand,
+          card_no: payload.stripeCardDetails.card_no,
+          cardholder_name: payload.stripeCardDetails.cardholder_name,
+          transaction_id: payload.stripeCardDetails.transaction_id,
+        } : {})
       },
     })
     console.log('✅ [Fulfillment] Payment added successfully.')
@@ -428,17 +437,31 @@ export async function fulfillOdooOrder(
     console.error('Error Details:', e.odooError || e)
   }
 
+  // 7b. Generate Invoice
+  console.log('[Fulfillment] Generating invoice...')
+  let invoiceSuccess = false
   try {
-    console.log('[Fulfillment] Generating invoice...')
     // action_pos_order_invoice creates the account.move and returns the action for it
     await odooCall('pos.order', 'action_pos_order_invoice', { ids: [orderId] })
-    console.log('[Fulfillment] Invoice generated. Verifying account move...')
+    invoiceSuccess = true
+    console.log('[Fulfillment] Invoice generated successfully.')
+  } catch (e: any) {
+    console.warn(
+      `[Fulfillment] action_pos_order_invoice failed for order ${orderId}:`,
+      e.message,
+    )
+    if (e.odooError) {
+      console.warn('[Fulfillment] Odoo error detail:', JSON.stringify(e.odooError))
+    }
+  }
 
-    // Re-read order to find the linked move
+  // 7c. Verify and post the account.move
+  try {
     const orderRefetched = await odooCall<any[]>('pos.order', 'read', {
       ids: [orderId],
       fields: ['account_move', 'state', 'is_invoiced'],
     })
+    console.log(`[Fulfillment] Order state: ${orderRefetched?.[0]?.state}, is_invoiced: ${orderRefetched?.[0]?.is_invoiced}`)
 
     if (orderRefetched?.[0]?.account_move) {
       const moveId = Array.isArray(orderRefetched[0].account_move)
@@ -455,56 +478,83 @@ export async function fulfillOdooOrder(
         console.log('[Fulfillment] Account Move is in DRAFT. Attempting to post...')
         try {
           await odooCall('account.move', 'action_post', { ids: [moveId] })
-          console.log('[Fulfillment] Account Move posted successfully.')
+          console.log('✅ [Fulfillment] Account Move posted → Fully Invoiced.')
         } catch (postErr: any) {
           console.error('[Fulfillment] Failed to post account move:', postErr.message)
+          if ((postErr as any).odooError) {
+            console.error('[Fulfillment] Odoo post error detail:', JSON.stringify((postErr as any).odooError))
+          }
         }
       } else {
         console.log(`[Fulfillment] Account Move state is already: ${move?.[0]?.state}`)
       }
-    } else {
-      console.warn('[Fulfillment] No account_move found on order after invoicing call.')
+    } else if (!invoiceSuccess) {
+      // Invoice generation failed AND no account_move exists.
+      // Try setting state to 'done' so the order at least shows as completed.
+      console.warn('[Fulfillment] No account_move found. Falling back to done state.')
+      try {
+        await odooCall('pos.order', 'write', {
+          ids: [orderId],
+          vals: { state: 'done' },
+        })
+        console.log('[Fulfillment] Manual state move to done succeeded.')
+      } catch (writeErr: any) {
+        console.error('[Fulfillment] Final state move failed:', writeErr.message)
+      }
     }
-  } catch (e: any) {
-    console.warn(
-      '[Fulfillment] Invoice generation failed or move posting error:',
-      e.message,
-    )
-    // Fallback: manually move to 'done' state if invoicing fails (optional safeguard)
-    try {
-      await odooCall('pos.order', 'write', {
-        ids: [orderId],
-        vals: { state: 'done' },
-      })
-      console.log('✅ [Fulfillment] Manual state move to done succeeded.')
-    } catch (writeErr: any) {
-      console.error('[Fulfillment] Final state move failed:', writeErr.message)
-    }
+  } catch (verifyErr: any) {
+    console.error('[Fulfillment] Invoice verification failed:', verifyErr.message)
   }
 
-  // 8. Fetch Reference & Status
-  const final = await odooCall<Array<{ pos_reference: string; state: string }>>(
+  // 8. Fetch Reference, Status, and Invoice Details
+  const final = await odooCall<any[]>(
     'pos.order',
     'read',
     {
       ids: [orderId],
-      fields: ['pos_reference', 'state'],
+      fields: ['pos_reference', 'state', 'account_move'],
     },
   )
 
-  const finalState = final[0]?.state || 'unknown'
-  console.log(
-    `✅ [Fulfillment] Order #${orderId} (Ref: ${final[0]?.pos_reference}) processed. Final State: ${finalState}`,
-  )
-  if (stripePaymentIntentId) {
-    console.log(
-      `🔗 [Fulfillment] Linked to Stripe Payment Intent: ${stripePaymentIntentId}`,
-    )
+  const orderRecord = final[0]
+  const finalState = orderRecord?.state || 'unknown'
+  let accountMoveName = ''
+  let invoiceId = null
+
+  if (orderRecord?.account_move) {
+    invoiceId = Array.isArray(orderRecord.account_move) ? orderRecord.account_move[0] : orderRecord.account_move
+    accountMoveName = Array.isArray(orderRecord.account_move) ? orderRecord.account_move[1] : ''
+    
+    // 8a. Link Accounting Payment Method for P&L clarity
+    if (invoiceId && (paymentMethod === 'stripe' || paymentMethod === 'demo_online')) {
+      try {
+        const accMethods = await odooCall<any[]>('account.payment.method.line', 'search_read', {
+          domain: [['name', 'ilike', 'Stripe'], ['payment_type', '=', 'inbound']],
+          fields: ['id'],
+          limit: 1
+        })
+        if (accMethods.length > 0) {
+          await odooCall('account.move', 'write', {
+            ids: [invoiceId],
+            vals: { preferred_payment_method_line_id: accMethods[0].id }
+          })
+          console.log(`✅ [Fulfillment] Linked accounting payment method to invoice ${invoiceId}`)
+        }
+      } catch (accErr: any) {
+        console.warn('[Fulfillment] Failed to link accounting payment method:', accErr.message)
+      }
+    }
   }
 
+  console.log(
+    `✅ [Fulfillment] Order #${orderId} (Ref: ${orderRecord?.pos_reference}) processed. Final State: ${finalState}`,
+  )
+  
   return {
     orderId,
-    posReference: final[0]?.pos_reference || `Order #${orderId}`,
+    posReference: orderRecord?.pos_reference || `Order #${orderId}`,
     state: finalState,
+    accountMoveName,
+    invoiceId
   }
 }
