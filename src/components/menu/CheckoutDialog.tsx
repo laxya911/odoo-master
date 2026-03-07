@@ -16,6 +16,7 @@ import { useRouter } from 'next/navigation'
 import { Elements } from '@stripe/react-stripe-js'
 import { CheckoutFormInner } from './CheckoutFormInner'
 import { usePaymentConfig } from '@/context/PaymentConfigContext'
+import { useSession } from '@/context/SessionContext'
 
 const checkoutSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters.' }),
@@ -55,18 +56,18 @@ export const CheckoutDialog = memo(
     const [currentStep, setCurrentStep] = useState<CheckoutStep>('personal')
     const [placedOrderId, setPlacedOrderId] = useState<number | null>(null)
     const [placedOrderRef, setPlacedOrderRef] = useState<string | null>(null)
-    // stripePromise now comes from context so it can be initialized at app startup
     const [clientSecret, setClientSecret] = useState<string | null>(null)
     const [creatingPaymentIntent, setCreatingPaymentIntent] = useState(false)
+    const [isProcessing, setIsProcessing] = useState(false)
 
     const { user, isAuthenticated, refreshUser } = useAuth()
     const { clearCart } = useCart()
     const router = useRouter()
     const {
-      config,
       stripePromise,
       isLoading: configLoading,
     } = usePaymentConfig()
+    const { session } = useSession()
 
     const form = useForm<CheckoutFormValues>({
       resolver: zodResolver(checkoutSchema),
@@ -83,10 +84,8 @@ export const CheckoutDialog = memo(
       },
     })
 
-    // Prefill user details from Odoo database when dialog opens
     useEffect(() => {
       if (isOpen) {
-        // Always start with clean defaults, then apply fresh user data from Odoo
         form.reset({
           name: (isAuthenticated && user?.name) || '',
           email: (isAuthenticated && user?.email) || '',
@@ -96,40 +95,30 @@ export const CheckoutDialog = memo(
           zip: (isAuthenticated && user?.zip) || '',
           orderType: 'delivery',
           tableNumber: '',
-          notes: '', // Always clear notes for a fresh order
+          notes: '',
         })
       }
-    }, [isOpen]) // Only re-run when dialog opens — not on user/form changes
+    }, [isOpen, isAuthenticated, user, form])
 
-    // Memoize cart signature to avoid unnecessary payment intent creation
     const cartSignature = useMemo(() => {
       const itemsRef = cartItems.map((i) => `${i.id}:${i.quantity}`).join('|')
       return `${itemsRef}:${Number(total).toFixed(2)}`
     }, [cartItems, total])
 
-    // whenever the underlying cart signature changes (items/total), invalidate
-    // any previously fetched client secret so we won't charge an outdated amount.
     useEffect(() => {
       if (cartSignature && clientSecret) {
         setClientSecret(null)
       }
     }, [cartSignature])
 
-    // Create payment intent only when user reaches payment step
     const createPaymentIntent = useCallback(
       async (force = false) => {
         if (!force && (creatingPaymentIntent || clientSecret)) return
-        // nothing to charge
-        if (!cartItems || cartItems.length === 0) {
-          console.warn('[CheckoutDialog] createPaymentIntent skipped: cart empty')
-          return
-        }
+        if (!cartItems || cartItems.length === 0) return
 
         setCreatingPaymentIntent(true)
-
         try {
           const paymentIntentId = clientSecret ? clientSecret.split('_secret_')[0] : undefined
-
           const response = await fetch('/api/payment/create', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -153,34 +142,18 @@ export const CheckoutDialog = memo(
           setCreatingPaymentIntent(false)
         }
       },
-      [
-        cartItems,
-        total,
-        subtotal,
-        form,
-        clientSecret,
-        creatingPaymentIntent,
-        setClientSecret,
-      ],
+      [cartItems, total, subtotal, form, clientSecret, creatingPaymentIntent]
     )
 
-
     const handleStepChange = async (step: CheckoutStep) => {
-      // Validate current step before moving forward
       if (step === 'details') {
         const isValid = await form.trigger(['name', 'email', 'phone'])
         if (!isValid) return
         setCurrentStep(step)
       } else if (step === 'payment') {
-        const isValid = await form.trigger([
-          'street',
-          'city',
-          'zip',
-          'orderType',
-        ])
+        const isValid = await form.trigger(['street', 'city', 'zip', 'orderType'])
         if (!isValid) return
         setCurrentStep(step)
-        // FORCE re-creation or update of intent to capture latest notes/address/type in metadata
         createPaymentIntent(true)
       } else {
         setCurrentStep(step)
@@ -188,22 +161,17 @@ export const CheckoutDialog = memo(
     }
 
     const [savedPiSuffix, setSavedPiSuffix] = useState<string | null>(null)
-
     const { setIsCartOpen } = useCart()
 
     const handleCheckoutSuccess = () => {
-      // preserve suffix before clearing the cart/secret
       const suffix = clientSecret ? clientSecret.split('_')[1]?.slice(-6) : null
       if (suffix) setSavedPiSuffix(suffix)
-
-      // clear clientSecret so next order will create a fresh payment intent
       setClientSecret(null)
       setCurrentStep('success')
       clearCart()
-      setIsCartOpen(false) // Auto-close drawer on success
+      setIsCartOpen(false)
     }
 
-    // Poll for the created order once payment is successful
     useEffect(() => {
       let pollInterval: NodeJS.Timeout
       let attempts = 0
@@ -211,9 +179,7 @@ export const CheckoutDialog = memo(
 
       if (currentStep === 'success' && !placedOrderRef) {
         const email = form.getValues('email')
-        const piSuffix =
-          savedPiSuffix ||
-          (clientSecret ? clientSecret.split('_')[1]?.slice(-6) : null)
+        const piSuffix = savedPiSuffix || (clientSecret ? clientSecret.split('_')[1]?.slice(-6) : null)
 
         const poll = async () => {
           try {
@@ -228,44 +194,34 @@ export const CheckoutDialog = memo(
               const latestOrder = result.data[0]
               setPlacedOrderId(latestOrder.id)
               setPlacedOrderRef(latestOrder.pos_reference)
-              // clear stored suffix once we have a result to avoid reuse later
               setSavedPiSuffix(null)
-
-              // Refresh user data so the new address persists in current session
               refreshUser()
-
               clearInterval(pollInterval)
             }
           } catch (err) {
             console.error('Polling error:', err)
           }
-
           attempts++
           if (attempts >= maxAttempts) clearInterval(pollInterval)
         }
-
         pollInterval = setInterval(poll, 3000)
         poll()
       }
-
-      return () => {
-        if (pollInterval) clearInterval(pollInterval)
-      }
-    }, [currentStep, placedOrderRef, form, clientSecret, savedPiSuffix])
+      return () => { if (pollInterval) clearInterval(pollInterval) }
+    }, [currentStep, placedOrderRef, form, clientSecret, savedPiSuffix, refreshUser])
 
     const handleClose = () => {
       setCurrentStep('personal')
       setPlacedOrderId(null)
       setPlacedOrderRef(null)
       setClientSecret(null)
-      // Reset form to prevent stale notes/data from persisting
       form.reset({
-        name: user?.name || '',
-        email: user?.email || '',
-        phone: user?.phone || '',
-        street: user?.street || '',
-        city: user?.city || '',
-        zip: user?.zip || '',
+        name: (isAuthenticated && user?.name) || '',
+        email: (isAuthenticated && user?.email) || '',
+        phone: (isAuthenticated && user?.phone) || '',
+        street: (isAuthenticated && user?.street) || '',
+        city: (isAuthenticated && user?.city) || '',
+        zip: (isAuthenticated && user?.zip) || '',
         orderType: 'delivery',
         tableNumber: '',
         notes: '',
@@ -292,52 +248,25 @@ export const CheckoutDialog = memo(
                 <CheckCircle2 size={48} className='animate-bounce' />
               </div>
               <div className='space-y-2'>
-                <h2 className='text-3xl font-serif font-bold text-neutral-900'>
-                  Order Successful!
-                </h2>
-                <p className='text-neutral-700 max-w-sm'>
-                  Thank you for your order. We've received it and are preparing
-                  your culinary experience.
-                </p>
+                <h2 className='text-3xl font-serif font-bold text-neutral-900'>Order Successful!</h2>
+                <p className='text-neutral-700 max-w-sm'>Thank you for your order. We've received it and are preparing your culinary experience.</p>
                 <div className='flex flex-col items-center gap-2 mt-4'>
-                  <Badge
-                    variant='secondary'
-                    className='bg-amber-100 text-amber-900 border border-amber-200 px-4 py-1 rounded-full uppercase text-xs tracking-widest font-bold'
-                  >
+                  <Badge variant='secondary' className='bg-amber-100 text-amber-900 border border-amber-200 px-4 py-1 rounded-full uppercase text-xs tracking-widest font-bold'>
                     Receipt: {placedOrderRef || placedOrderId || 'Pending'}
                   </Badge>
                 </div>
               </div>
-
               <div className='grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-md pt-4'>
-                <Button
-                  variant='outline'
-                  className='h-14 rounded-2xl border-neutral-200 bg-white text-neutral-900 font-bold hover:bg-neutral-50'
-                  onClick={() => {
-                    handleClose()
-                    // Preferred to use numerical ID for tracking route
-                    const trackingId = placedOrderId || placedOrderRef
-                    if (trackingId) {
-                      router.push(`/track/${trackingId}`)
-                    }
-                  }}
-                >
+                <Button variant='outline' className='h-14 rounded-2xl border-neutral-200 bg-white text-neutral-900 font-bold hover:bg-neutral-50'
+                  onClick={() => { handleClose(); const trackingId = placedOrderId || placedOrderRef; if (trackingId) router.push(`/track/${trackingId}`) }}>
                   Track Order
                 </Button>
-                <Button
-                  variant='outline'
-                  className='h-14 rounded-2xl border-neutral-200 bg-white text-neutral-900 font-bold hover:bg-neutral-50'
-                  onClick={() => {
-                    handleClose()
-                    router.push('/profile')
-                  }}
-                >
+                <Button variant='outline' className='h-14 rounded-2xl border-neutral-200 bg-white text-neutral-900 font-bold hover:bg-neutral-50'
+                  onClick={() => { handleClose(); router.push('/profile') }}>
                   View Profile
                 </Button>
-                <Button
-                  className='h-14 sm:col-span-2 rounded-2xl bg-accent-gold hover:bg-amber-600 text-white font-bold text-lg shadow-lg shadow-amber-500/20'
-                  onClick={handleClose}
-                >
+                <Button className='h-14 sm:col-span-2 rounded-2xl bg-accent-gold hover:bg-amber-600 text-white font-bold text-lg shadow-lg shadow-amber-500/20'
+                  onClick={handleClose}>
                   Continue Shopping
                 </Button>
               </div>
@@ -345,50 +274,35 @@ export const CheckoutDialog = memo(
           ) : (
             <FormProvider {...form}>
               <div className='flex flex-col h-[90vh] md:max-h-212'>
-                {/* Header with Step Indicator */}
-                <div className='p-8 pb-4 bg-white z-10 border-b'>
-                  <div className='flex justify-between items-center mb-6'>
-                    <h2 className='text-3xl font-serif font-bold text-neutral-900 tracking-tight'>
-                      Checkout
-                    </h2>
-                    <button
-                      onClick={handleClose}
-                      className='text-neutral-400 hover:text-neutral-600 transition text-xl'
-                    >
-                      ✕
-                    </button>
+                {/* Header */}
+                <div className='p-6 pb-2 bg-white z-10 border-b flex items-center justify-between'>
+                  <div className='flex flex-col'>
+                    <h2 className='text-2xl font-serif font-bold text-neutral-900 tracking-tight'>Checkout</h2>
+                    <p className='text-[10px] text-neutral-400 font-bold uppercase tracking-widest'>
+                      Step {currentStep === 'personal' ? '1' : currentStep === 'details' ? '2' : '3'} of 3
+                    </p>
                   </div>
-                  {/* Step Indicator */}
-                  <div className='flex items-center gap-2 text-sm'>
-                    {['personal', 'details', 'payment'].map((step, idx) => (
-                      <React.Fragment key={step}>
-                        <div
-                          className={cn(
-                            'w-8 h-8 rounded-full flex items-center justify-center font-bold transition-all',
-                            currentStep === step ||
-                              (currentStep === 'payment' && step !== 'payment')
-                              ? 'bg-accent-gold text-white'
-                              : currentStep === 'details' && step === 'personal'
-                                ? 'bg-accent-gold text-white'
-                                : 'bg-neutral-200 text-neutral-600',
-                          )}
-                        >
-                          {idx + 1}
-                        </div>
-                        {idx < 2 && (
-                          <div
-                            className={cn(
-                              'flex-1 h-1 transition-all',
-                              (currentStep === 'details' && idx === 0) ||
-                                currentStep === 'payment'
-                                ? 'bg-accent-gold'
-                                : 'bg-neutral-200',
-                            )}
-                          />
-                        )}
-                      </React.Fragment>
-                    ))}
-                  </div>
+                </div>
+
+                {/* Step Indicator */}
+                <div className='px-6 pt-3 flex items-center gap-2 text-sm bg-white'>
+                  {['personal', 'details', 'payment'].map((step, idx) => (
+                    <React.Fragment key={step}>
+                      <div className={cn(
+                        'w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold transition-all',
+                        currentStep === step || (currentStep === 'payment' && step !== 'payment') || (currentStep === 'details' && step === 'personal')
+                          ? 'bg-accent-gold text-white' : 'bg-neutral-100 text-neutral-400'
+                      )}>
+                        {idx + 1}
+                      </div>
+                      {idx < 2 && (
+                        <div className={cn(
+                          'flex-1 h-0.5 transition-all',
+                          (currentStep === 'details' && idx === 0) || currentStep === 'payment' ? 'bg-accent-gold' : 'bg-neutral-100'
+                        )} />
+                      )}
+                    </React.Fragment>
+                  ))}
                 </div>
 
                 {/* Content Area */}
@@ -396,182 +310,87 @@ export const CheckoutDialog = memo(
                   {configLoading ? (
                     <div className='flex flex-col items-center justify-center h-full space-y-4'>
                       <Loader2 className='w-8 h-8 animate-spin text-accent-gold' />
-                      <p className='text-neutral-500 font-medium'>
-                        Loading checkout...
-                      </p>
+                      <p className='text-neutral-500 font-medium'>Loading checkout...</p>
                     </div>
                   ) : (
-                    // whatever step content we display, but wire Elements outside so it's already mounted
                     <>
                       {currentStep === 'personal' && (
                         <div className='space-y-6 py-4'>
-                          <h3 className='text-lg font-bold text-neutral-900'>
-                            Personal Details
-                          </h3>
+                          <h3 className='text-lg font-bold text-neutral-900'>Personal Details</h3>
                           <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
                             <div className='space-y-2'>
-                              <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>
-                                Full Name
-                              </label>
-                              <input
-                                {...form.register('name')}
-                                placeholder='Name'
-                                className='w-full h-12 px-4 rounded-xl border border-neutral-200 focus:border-accent-gold focus:outline-none transition'
-                              />
-                              {form.formState.errors.name && (
-                                <span className='text-xs text-red-500'>
-                                  {form.formState.errors.name.message}
-                                </span>
-                              )}
+                              <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>Full Name</label>
+                              <input {...form.register('name')} placeholder='Name' className='w-full h-12 px-4 rounded-xl border border-neutral-200 focus:border-accent-gold focus:outline-none transition' />
+                              {form.formState.errors.name && <span className='text-xs text-red-500'>{form.formState.errors.name.message}</span>}
                             </div>
                             <div className='space-y-2'>
-                              <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>
-                                Phone
-                              </label>
-                              <input
-                                {...form.register('phone')}
-                                placeholder='Phone'
-                                className='w-full h-12 px-4 rounded-xl border border-neutral-200 focus:border-accent-gold focus:outline-none transition'
-                              />
-                              {form.formState.errors.phone && (
-                                <span className='text-xs text-red-500'>
-                                  {form.formState.errors.phone.message}
-                                </span>
-                              )}
+                              <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>Phone</label>
+                              <input {...form.register('phone')} placeholder='Phone' className='w-full h-12 px-4 rounded-xl border border-neutral-200 focus:border-accent-gold focus:outline-none transition' />
+                              {form.formState.errors.phone && <span className='text-xs text-red-500'>{form.formState.errors.phone.message}</span>}
                             </div>
                           </div>
                           <div className='space-y-2'>
-                            <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>
-                              Email Address
-                            </label>
-                            <input
-                              type='email'
-                              {...form.register('email')}
-                              placeholder='Email'
-                              className='w-full h-12 px-4 rounded-xl border border-neutral-200 focus:border-accent-gold focus:outline-none transition'
-                            />
-                            {form.formState.errors.email && (
-                              <span className='text-xs text-red-500'>
-                                {form.formState.errors.email.message}
-                              </span>
-                            )}
+                            <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>Email Address</label>
+                            <input type='email' {...form.register('email')} placeholder='Email' className='w-full h-12 px-4 rounded-xl border border-neutral-200 focus:border-accent-gold focus:outline-none transition' />
+                            {form.formState.errors.email && <span className='text-xs text-red-500'>{form.formState.errors.email.message}</span>}
                           </div>
                         </div>
                       )}
+
                       {currentStep === 'details' && (
                         <div className='space-y-6 py-4'>
-                          <h3 className='text-lg font-bold text-neutral-900'>
-                            Order Details
-                          </h3>
+                          <h3 className='text-lg font-bold text-neutral-900'>Order Details</h3>
                           <div className='space-y-3'>
-                            <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>
-                              Order Type
-                            </label>
+                            <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>Order Type</label>
                             <div className='grid grid-cols-3 gap-3'>
-                              {['delivery', 'dine-in', 'takeout'].map(
-                                (type) => (
-                                  <div
-                                    key={type}
-                                    onClick={() =>
-                                      form.setValue('orderType', type as any)
-                                    }
-                                    className={cn(
-                                      'flex flex-col items-center justify-center p-4 border-2 rounded-2xl transition-all cursor-pointer',
-                                      form.watch('orderType') === type
-                                        ? 'border-accent-gold bg-amber-50'
-                                        : 'border-neutral-200 opacity-60 hover:border-neutral-300',
-                                    )}
-                                  >
-                                    <span className='text-sm font-bold uppercase'>
-                                      {type}
-                                    </span>
-                                  </div>
-                                ),
-                              )}
+                              {['delivery', 'dine-in', 'takeout'].map((type) => (
+                                <div key={type} onClick={() => form.setValue('orderType', type as any)}
+                                  className={cn('flex flex-col items-center justify-center p-4 border-2 rounded-2xl transition-all cursor-pointer',
+                                    form.watch('orderType') === type ? 'border-accent-gold bg-amber-50' : 'border-neutral-200 opacity-60 hover:border-neutral-300')}>
+                                  <span className='text-sm font-bold uppercase'>{type}</span>
+                                </div>
+                              ))}
                             </div>
                           </div>
                           <div className='space-y-3'>
-                            <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>
-                              Street Address
-                            </label>
-                            <input
-                              {...form.register('street')}
-                              placeholder='Street'
-                              className='w-full h-12 px-4 rounded-xl border border-neutral-200 focus:border-accent-gold focus:outline-none transition'
-                            />
-                            {form.formState.errors.street && (
-                              <span className='text-xs text-red-500'>
-                                {form.formState.errors.street.message}
-                              </span>
-                            )}
+                            <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>Street Address</label>
+                            <input {...form.register('street')} placeholder='Street' className='w-full h-12 px-4 rounded-xl border border-neutral-200 focus:border-accent-gold focus:outline-none transition' />
+                            {form.formState.errors.street && <span className='text-xs text-red-500'>{form.formState.errors.street.message}</span>}
                           </div>
                           <div className='grid grid-cols-2 gap-4'>
                             <div className='space-y-2'>
-                              <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>
-                                City
-                              </label>
-                              <input
-                                {...form.register('city')}
-                                placeholder='City'
-                                className='w-full h-12 px-4 rounded-xl border border-neutral-200 focus:border-accent-gold focus:outline-none transition'
-                              />
-                              {form.formState.errors.city && (
-                                <span className='text-xs text-red-500'>
-                                  {form.formState.errors.city.message}
-                                </span>
-                              )}
+                              <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>City</label>
+                              <input {...form.register('city')} placeholder='City' className='w-full h-12 px-4 rounded-xl border border-neutral-200 focus:border-accent-gold focus:outline-none transition' />
+                              {form.formState.errors.city && <span className='text-xs text-red-500'>{form.formState.errors.city.message}</span>}
                             </div>
                             <div className='space-y-2'>
-                              <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>
-                                ZIP Code
-                              </label>
-                              <input
-                                {...form.register('zip')}
-                                placeholder='ZIP'
-                                className='w-full h-12 px-4 rounded-xl border border-neutral-200 focus:border-accent-gold focus:outline-none transition'
-                              />
-                              {form.formState.errors.zip && (
-                                <span className='text-xs text-red-500'>
-                                  {form.formState.errors.zip.message}
-                                </span>
-                              )}
+                              <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>ZIP Code</label>
+                              <input {...form.register('zip')} placeholder='ZIP' className='w-full h-12 px-4 rounded-xl border border-neutral-200 focus:border-accent-gold focus:outline-none transition' />
+                              {form.formState.errors.zip && <span className='text-xs text-red-500'>{form.formState.errors.zip.message}</span>}
                             </div>
                           </div>
                           <div className='space-y-2'>
-                            <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>
-                              Order Notes (Optional)
-                            </label>
-                            <textarea
-                              {...form.register('notes')}
-                              placeholder='Special instructions...'
-                              className='w-full px-4 py-3 rounded-2xl border border-neutral-200 focus:border-accent-gold focus:outline-none transition h-24 resize-none'
-                            />
+                            <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>Order Notes (Optional)</label>
+                            <textarea {...form.register('notes')} placeholder='Instructions...' className='w-full px-4 py-3 rounded-2xl border border-neutral-200 focus:border-accent-gold focus:outline-none transition h-24 resize-none' />
                           </div>
                         </div>
                       )}
+
                       {currentStep === 'payment' && (
                         <div className='space-y-6 py-4'>
-                          <h3 className='text-lg font-bold text-neutral-900'>
-                            Payment
-                          </h3>
+                          <h3 className='text-lg font-bold text-neutral-900'>Payment</h3>
                           {creatingPaymentIntent && !clientSecret && (
                             <div className='flex flex-col items-center justify-center h-48 space-y-4'>
                               <Loader2 className='w-8 h-8 animate-spin text-accent-gold' />
-                              <p className='text-neutral-500 font-medium'>
-                                Initializing payment...
-                              </p>
+                              <p className='text-neutral-500 font-medium'>Initializing payment...</p>
                             </div>
                           )}
                         </div>
                       )}
 
-                      {/* Elements provider mounted as soon as we have the promise and secret */}
                       {stripePromise && clientSecret && (
-                        <Elements
-                          stripe={stripePromise}
-                          options={memoizedStripeOptions}
-                        >
-                          {currentStep === 'payment' && (
+                        <Elements stripe={stripePromise} options={memoizedStripeOptions}>
+                          <div className={cn(currentStep === 'payment' ? 'block' : 'hidden')}>
                             <CheckoutFormInner
                               cartItems={cartItems}
                               total={total}
@@ -581,43 +400,40 @@ export const CheckoutDialog = memo(
                               onCancel={handleClose}
                               onSuccess={handleCheckoutSuccess}
                               inlineMode={true}
+                              isProcessing={isProcessing}
+                              setIsProcessing={setIsProcessing}
                             />
-                          )}
+                          </div>
                         </Elements>
                       )}
                     </>
                   )}
                 </div>
 
-                {/* Footer with Navigation Buttons */}
-                <div className='p-8 bg-white border-t flex gap-4'>
-                  <Button
-                    variant='ghost'
-                    type='button'
-                    onClick={() =>
-                      handleStepChange(
-                        currentStep === 'details' ? 'personal' : 'details',
-                      )
-                    }
-                    disabled={currentStep === 'personal'}
-                    className='h-14 flex-1 font-bold text-neutral-600 rounded-2xl hover:bg-neutral-100'
-                  >
+                {/* Footer */}
+                <div className='p-6 bg-white border-t flex gap-3'>
+                  <Button variant='ghost' type='button' disabled={currentStep === 'personal'}
+                    onClick={() => handleStepChange(currentStep === 'details' ? 'personal' : 'details')}
+                    className='h-12 flex-1 font-bold text-neutral-500 rounded-xl hover:bg-neutral-50 border border-neutral-100'>
                     <ArrowLeft className='w-4 h-4 mr-2' /> Back
                   </Button>
-                  {currentStep !== 'payment' && (
-                    <Button
-                      type='button'
-                      onClick={() =>
-                        handleStepChange(
-                          currentStep === 'personal' ? 'details' : 'payment',
-                        )
-                      }
-                      className='h-14 flex-2 bg-accent-gold hover:bg-amber-600 text-white font-bold rounded-2xl shadow-lg shadow-amber-500/20 text-lg transition-all'
-                    >
-                      {currentStep === 'details'
-                        ? 'Proceed to Payment'
-                        : 'Continue'}{' '}
-                      <ArrowRight className='w-4 h-4 ml-2' />
+                  {currentStep === 'payment' ? (
+                    <Button type='submit' form='checkout-form' disabled={!session?.isOpen || isProcessing}
+                      className='h-12 flex-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-lg shadow-amber-500/20 text-base transition-all group'>
+                      {isProcessing ? (
+                        <>
+                          <Loader2 className='w-4 h-4 mr-2 animate-spin' /> Processing...
+                        </>
+                      ) : (
+                        <>
+                          Complete & Pay <ArrowRight className='w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform' />
+                        </>
+                      )}
+                    </Button>
+                  ) : (
+                    <Button type='button' onClick={() => handleStepChange(currentStep === 'personal' ? 'details' : 'payment')}
+                      className='h-12 flex-2 bg-accent-gold hover:bg-amber-600 text-white font-bold rounded-xl shadow-lg shadow-amber-500/20 text-base transition-all'>
+                      {currentStep === 'details' ? 'Proceed to Payment' : 'Continue'} <ArrowRight className='w-4 h-4 ml-2' />
                     </Button>
                   )}
                 </div>
@@ -627,7 +443,7 @@ export const CheckoutDialog = memo(
         </DialogContent>
       </Dialog>
     )
-  },
+  }
 )
 
 CheckoutDialog.displayName = 'CheckoutDialog'

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { useCart } from '@/context/CartContext'
 import { useCompany } from '@/context/CompanyContext'
 import { useSession } from '@/context/SessionContext'
+import { cn } from '@/lib/utils'
 import { useProducts } from '@/context/ProductContext'
 
 interface ProductConfiguratorProps {
@@ -39,46 +40,13 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
 
   const [configSelections, setConfigSelections] = useState<
     Record<string, number[]>
-  >(() => {
-    const initial: Record<string, number[]> = {}
-    attributes.forEach((attr: ProductAttribute) => {
-      // Odoo attribute structure: { id, name, type, values: [{id, name, price_extra}] }
-      // Assuming type mapping: 'radio', 'select', etc.
-      // Odoo types: 'radio', 'select', 'color'
-      // We default to first value for radio/select if required/available
-      const display_type =
-        (attr as unknown as ProductAttribute).display_type || 'radio'
-      if (display_type === 'radio' || display_type === 'select') {
-        if (attr.values && attr.values.length > 0) {
-          initial[attr.id] = [attr.values[0].id]
-        }
-      } else {
-        initial[attr.id] = []
-      }
-    })
-    return initial
-  })
+  >({})
 
-  const [comboSelections, setComboSelections] = useState<
-    Record<string, number[]>
-  >(() => {
-    const initial: Record<string, number[]> = {}
-    comboLines.forEach((line: ComboLine) => {
-      // For Combo lines, if it's single-select and required we can prefill the first
-      // item to simplify the UX. For multi-select (max_item>1) we start empty so the
-      // user must actively make all selections.
-      if (
-        line.required &&
-        line.product_ids?.length > 0 &&
-        (line.max_item || 1) === 1
-      ) {
-        initial[line.id] = [line.product_ids[0]]
-      } else {
-        initial[line.id] = []
-      }
-    })
-    return initial
-  })
+  // Track qty per product in each combo line
+  // Key: lineId, Value: Record<productId, quantity>
+  const [comboItemQuantities, setComboItemQuantities] = useState<
+    Record<string, Record<string, number>>
+  >({})
 
   const [configInstructions, setConfigInstructions] = useState('')
 
@@ -98,27 +66,23 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
     // 1. Check top-level required combo lines
     for (const line of comboLines) {
       if (line.required) {
-        const selectedIds = comboSelections[line.id] || []
-        const qtyFree = line.included_item || 0
+        const lineQuantities = comboItemQuantities[line.id] || {}
+        const totalSelected = Object.values(lineQuantities).reduce((a, b) => a + b, 0)
+        const qtyMin = line.included_item || 0
         const qtyMax = line.max_item || 1
 
-        // If qty_free > 0, user must select AT LEAST that many (and up to qty_max)
-        // If qty_free == 0, user must select EXACTLY qty_max
-        if (qtyFree > 0) {
-          if (selectedIds.length < qtyFree || selectedIds.length > qtyMax) {
-            return false
-          }
-        } else {
-          if (selectedIds.length !== qtyMax) {
-            return false
-          }
+        // If qty_min is set (often same as included_item), user must select AT LEAST that many
+        if (totalSelected < qtyMin || totalSelected > qtyMax) {
+          return false
         }
       }
     }
 
     // 2. Check nested required combo lines for all selected products
-    for (const [lineId, selectedIds] of Object.entries(comboSelections)) {
-      for (const productId of selectedIds) {
+    for (const [lineId, quantities] of Object.entries(comboItemQuantities)) {
+      for (const [productIdStr, qty] of Object.entries(quantities)) {
+        if ((qty as number) <= 0) continue
+        const productId = parseInt(productIdStr)
         const line = comboLines.find((l) => l.id === parseInt(lineId))
         const product = line?.products?.find((p) => p.id === productId)
 
@@ -135,7 +99,7 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
     }
 
     return true
-  }, [comboLines, comboSelections, nestedSelections])
+  }, [comboLines, comboItemQuantities, nestedSelections])
 
   const currentConfigPrice = useMemo(() => {
     let total = product.list_price
@@ -152,7 +116,7 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
 
     // Add combo prices (top-level), respecting Odoo 19 "Prorating" heuristic
     comboLines.forEach((line: ComboLine) => {
-      const selectedIds = comboSelections[line.id] || []
+      const lineQuantities = comboItemQuantities[line.id] || {}
       const categoryBasePrice = line.base_price || 0
       const qtyFreeTotal = line.included_item || 0
 
@@ -163,40 +127,48 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
       //    They consume free slots. Excess Quota Items charge categoryBasePrice + extra_price.
 
       let quotaItemsCount = 0
+      // Sort products by extra_price ascending to ensure cheapest items consume free slots first (though it doesn't matter for the total if extra_price is always added, Odoo does this)
+      const sortedItemEntries = Object.entries(lineQuantities).sort(([pidA], [pidB]) => {
+        const pA = line.products?.find(p => p.id === parseInt(pidA))
+        const pB = line.products?.find(p => p.id === parseInt(pidB))
+        return (pA?.extra_price || 0) - (pB?.extra_price || 0)
+      })
 
-      selectedIds.forEach((selectedPid) => {
-        const p = line.products?.find((prod) => prod.id === selectedPid)
-        if (!p) return
+      sortedItemEntries.forEach(([pidStr, qty]) => {
+        const pid = parseInt(pidStr)
+        const p = line.products?.find((prod) => prod.id === pid)
+        if (!p || (qty as number) <= 0) return
 
         const itemUpcharge = p.extra_price || 0
-        const isQuotaItem = itemUpcharge < categoryBasePrice
 
-        total += itemUpcharge
+        // Odoo 19: EVERY item adds its extra_price
+        total += itemUpcharge * (qty as number)
 
-        if (isQuotaItem) {
+        // Count items towards free quota
+        for (let i = 0; i < (qty as number); i++) {
           quotaItemsCount++
           if (quotaItemsCount > qtyFreeTotal) {
-            // Beyond free quota - charge Odoo product.combo base_price
+            // Beyond free quota - charge Odoo product.combo base_price for excess items
             total += categoryBasePrice
           }
         }
 
-        // Add attribute prices for this combo item
+        // Add attribute prices (simple assume qty 1 for attributes for now as per current limitation)
         p.attributes?.forEach((attr: ProductAttribute) => {
-          const attrKey = `${line.id}-${selectedPid}-attr`
+          const attrKey = `${line.id}-${pid}-attr`
           const selectedAttrIds =
             comboItemAttributes[attrKey]?.[attr.id] || []
           attr.values.forEach(
             (val: { id: number; name: string; price_extra?: number }) => {
               if (selectedAttrIds.includes(val.id))
-                total += val.price_extra || 0
+                total += (val.price_extra || 0) * (qty as number)
             },
           )
         })
 
         // Add nested sub-combo prices
         if (p.combo_lines) {
-          const nestedKey = `${line.id}-${selectedPid}`
+          const nestedKey = `${line.id}-${pid}`
           const subSels = nestedSelections[nestedKey] || {}
           p.combo_lines.forEach((subLine: ComboLine) => {
             const subSelectedIds = subSels[subLine.id] || []
@@ -210,12 +182,12 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
               if (!sp) return
 
               const subUpcharge = sp.extra_price || 0
-              total += subUpcharge
+              total += subUpcharge * (qty as number) // Charged per parent qty
 
               if (subUpcharge < subCatBase) {
                 subQuotaCount++
                 if (subQuotaCount > subQtyFree) {
-                  total += subCatBase
+                  total += subCatBase * (qty as number)
                 }
               }
             })
@@ -228,7 +200,7 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
   }, [
     product,
     configSelections,
-    comboSelections,
+    comboItemQuantities,
     comboItemAttributes,
     nestedSelections,
     attributes,
@@ -237,93 +209,89 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
 
   const handleAddToCart = () => {
     const attribute_value_ids = Object.values(configSelections).flat()
-    const combo_selections = Object.entries(comboSelections)
-      .map(([lineId, productIds]) => {
+    const combo_selections = Object.entries(comboItemQuantities)
+      .map(([lineId, quantities]) => {
         const line = comboLines.find((l) => l.id === parseInt(lineId))
+        const lineBasePrice = line?.base_price || 0
+        const qtyFreeLimit = line?.included_item || 0
 
-        const linkage = productIds
-          .map((pid, pIndex) => {
-            const prodMatch = line?.products?.find((p) => p.id === pid)
+        // Flatten products and their quantities into individual items for expansion
+        const linkage: any[] = []
+        let quotaUsed = 0
 
-            // Gather attribute selections for this combo item
+        // Sort products by extra_price to match Odoo's "cheapest first" free allocation if possible,
+        // but here we just follow the order of selection for simplicity/predictability.
+        // Odoo actually allocates free slots to the cheapest quota items.
+
+        const sortedPids = Object.keys(quantities).sort((a, b) => {
+          const pA = line?.products?.find(p => p.id === parseInt(a))
+          const pB = line?.products?.find(p => p.id === parseInt(b))
+          return (pA?.extra_price || 0) - (pB?.extra_price || 0)
+        })
+
+        for (const pidStr of sortedPids) {
+          const pid = parseInt(pidStr)
+          const qty = quantities[pidStr]
+          const prodMatch = line?.products?.find((p) => p.id === pid)
+          if (!prodMatch) continue
+
+          for (let q = 0; q < qty; q++) {
+            // Gather attribute selections
             const attrKey = `${lineId}-${pid}-attr`
             const attrSelections = comboItemAttributes[attrKey] || {}
-            const combo_item_attribute_ids =
-              Object.values(attrSelections).flat()
+            const combo_item_attribute_ids = Object.values(attrSelections).flat()
 
-            // Gather nested sub-combo selections for this product
+            // Gather nested sub-combo selections
             const nestedKey = `${lineId}-${pid}`
             const subSels = nestedSelections[nestedKey] || {}
             const sub_selections = Object.entries(subSels)
               .filter(([, spids]) => spids.length > 0)
               .map(([subLineId, subPids]) => {
-                const subLine = prodMatch?.combo_lines?.find(
-                  (sl) => sl.id === parseInt(subLineId),
-                )
-                const subLinkage = subPids
-                  .map((spid, spIndex) => {
-                    const sp = subLine?.products?.find((s) => s.id === spid)
-                    let subExtraPrice = sp?.extra_price || 0
-                    if (spIndex >= (subLine?.included_item || 0)) {
-                      subExtraPrice += subLine?.base_price || 0
-                    }
-                    return {
-                      combo_item_id: sp?.combo_item_id,
-                      extra_price: subExtraPrice,
-                    }
-                  })
-                  .filter((l) => l.combo_item_id !== undefined)
+                const subLine = prodMatch?.combo_lines?.find(sl => sl.id === parseInt(subLineId))
+                const subLinkage = subPids.map((spid, spIndex) => {
+                  const sp = subLine?.products?.find(s => s.id === spid)
+                  let subExtraPrice = sp?.extra_price || 0
+                  if (spIndex >= (subLine?.included_item || 0)) {
+                    subExtraPrice += subLine?.base_price || 0
+                  }
+                  return { combo_item_id: sp?.combo_item_id, extra_price: subExtraPrice }
+                }).filter(l => l.combo_item_id !== undefined)
+
                 return {
                   combo_id: parseInt(subLineId),
                   product_ids: subPids,
-                  combo_item_ids: subLinkage.map(
-                    (l) => l.combo_item_id as number,
-                  ),
-                  extra_prices: subLinkage.map((l) => l.extra_price),
+                  combo_item_ids: subLinkage.map(l => l.combo_item_id as number),
+                  extra_prices: subLinkage.map(l => l.extra_price),
                 }
               })
 
-            // Apply Odoo 19 Prorating to extraction logic
-            const itemUpcharge = prodMatch?.extra_price || 0
-            const comboLineBasePrice = line?.base_price || 0
-            const isQuotaItem = itemUpcharge < comboLineBasePrice
+            const itemUpcharge = prodMatch.extra_price || 0
+            // Odoo 19: All items consume quota.
+            quotaUsed++
+            let finalExtraPrice = itemUpcharge
 
-            let extraPrice = itemUpcharge
-            if (isQuotaItem) {
-              // Only count quota items towards free slots
-              // (Note: This assumes we track the order in this scope. 
-              // Since handleAddToCart iterates in order, we can maintain a counter or use pIndex 
-              // if we filter the productIds first. Let's filter to be safe.)
-              const quotaIdsBefore = productIds.slice(0, pIndex).filter(id => {
-                const match = line?.products?.find(p => p.id === id)
-                return (match?.extra_price || 0) < comboLineBasePrice
-              })
-              if (quotaIdsBefore.length >= (line?.included_item || 0)) {
-                extraPrice += comboLineBasePrice
-              }
+            if (quotaUsed > qtyFreeLimit) {
+              finalExtraPrice += lineBasePrice
             }
 
-            return {
-              combo_item_id: prodMatch?.combo_item_id,
-              extra_price: extraPrice,
-              attribute_value_ids:
-                combo_item_attribute_ids.length > 0
-                  ? combo_item_attribute_ids
-                  : undefined,
-              sub_selections:
-                sub_selections.length > 0 ? sub_selections : undefined,
-            }
-          })
-          .filter((l) => l.combo_item_id !== undefined)
+            linkage.push({
+              product_id: pid,
+              combo_item_id: prodMatch.combo_item_id,
+              extra_price: finalExtraPrice,
+              attribute_value_ids: combo_item_attribute_ids.length > 0 ? combo_item_attribute_ids : undefined,
+              sub_selections: sub_selections.length > 0 ? sub_selections : undefined,
+            })
+          }
+        }
 
         return {
           combo_id: parseInt(lineId),
-          product_ids: productIds,
-          combo_item_ids: linkage.map((l) => l.combo_item_id!),
-          extra_prices: linkage.map((l) => l.extra_price),
+          product_ids: linkage.map(l => l.product_id),
+          combo_item_ids: linkage.map(l => l.combo_item_id!),
+          extra_prices: linkage.map(l => l.extra_price),
           qty_free: line?.included_item || 0,
-          combo_item_attributes: linkage.map((l) => l.attribute_value_ids || []),
-          sub_selections: linkage.map((l) => l.sub_selections || []),
+          combo_item_attributes: linkage.map(l => l.attribute_value_ids || []),
+          sub_selections: linkage.map(l => l.sub_selections || []),
         }
       })
       .filter((c) => c.product_ids.length > 0)
@@ -351,20 +319,30 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
         ✕
       </button>
 
-      <div className='flex flex-col md:flex-row h-full overflow-hidden'>
-        <div className='h-40 md:h-auto md:w-2/5 shrink-0 relative overflow-hidden'>
-          <Image
-            src={
-              product.image_256
-                ? `data:image/png;base64,${product.image_256}`
-                : '/images/placeholder-food.jpg'
-            }
-            fill
-            className='object-cover'
-            alt={product.name}
-          />
-        </div>
-        <div className='grow flex flex-col h-full overflow-hidden relative'>
+      <div className={cn(
+        'flex h-full overflow-hidden',
+        comboLines.length > 0 ? 'flex-col' : 'flex-col md:flex-row'
+      )}>
+        {/* Hero Image - Hide for combos, keep for standard items */}
+        {comboLines.length === 0 && (
+          <div className='h-40 md:h-auto md:w-2/5 shrink-0 relative overflow-hidden'>
+            <Image
+              src={
+                product.image_256
+                  ? `data:image/png;base64,${product.image_256}`
+                  : '/images/placeholder-food.jpg'
+              }
+              fill
+              className='object-cover'
+              alt={product.name}
+            />
+          </div>
+        )}
+
+        <div className={cn(
+          'grow flex flex-col h-full overflow-hidden relative',
+          comboLines.length > 0 ? 'w-full' : 'md:w-3/5'
+        )}>
           <div className='grow overflow-y-auto p-4 md:p-8 space-y-6 no-scrollbar pb-12'>
             <div>
               <Badge variant='secondary' className='mb-2 h-6'>
@@ -450,262 +428,269 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
               comboLines.map((line: ComboLine) => (
                 <div key={line.id} className='space-y-4'>
                   <Label className='mb-0 text-white/70 flex items-baseline justify-between'>
-                    <div>
-                      {line.name}{' '}
+                    <div className='flex items-center gap-2'>
+                      <span className='font-bold text-lg text-white'>{line.name}</span>
                       {line.required && (
-                        <span className='text-accent-chili'>*</span>
+                        <span className='w-1.5 h-1.5 rounded-full bg-accent-chili shadow-[0_0_8px_rgba(239,68,68,0.5)]' />
                       )}
                     </div>
-                    <div className='text-sm text-white/60'>
-                      {/* Show selected / free count when available */}
+                    <div className='px-3 py-1 bg-white/5 rounded-full border border-white/10 text-[10px] font-bold tracking-widest uppercase text-accent-gold'>
                       {(() => {
-                        const selectedCount = (comboSelections[line.id] || [])
-                          .length
+                        const lineQuals = comboItemQuantities[line.id] || {}
+                        const totalSelected = Object.values(lineQuals).reduce((a, b) => a + (b as number), 0)
+
                         if ((line.included_item || 0) > 0) {
-                          // Filter selected items to only count those that consume a slot
-                          const quotaItemsSelectedCount = (comboSelections[line.id] || [])
-                            .filter(pid => {
-                              const p = line.products?.find(prod => prod.id === pid)
-                              return (p?.extra_price || 0) < (line.base_price || 0)
-                            }).length
-                          return `${quotaItemsSelectedCount}/${line.included_item} free`
+                          return `${totalSelected}/${line.included_item} free`
                         }
-                        // Fallback show max if >1
                         if ((line.max_item || 1) > 1) {
-                          return `${selectedCount}/${line.max_item}`
+                          return `${totalSelected}/${line.max_item} picked`
                         }
-                        return null
+                        return totalSelected > 0 ? 'Selected' : 'Required'
                       })()}
                     </div>
                   </Label>
-                  <div className='flex flex-col gap-4'>
-                    <div className='flex flex-wrap gap-2'>
+
+                  <div className='flex flex-col gap-6'>
+                    {/* Products Grid */}
+                    <div className='grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 gap-3'>
                       {line.products?.map((prod: Product) => {
-                        const isSelected = comboSelections[line.id]?.includes(
-                          prod.id,
-                        )
-                        return (
-                          <div key={prod.id} className='flex flex-col gap-3'>
-                            <button
-                              onClick={() => {
-                                setComboSelections((prev) => {
-                                  const current = prev[line.id] || []
-                                  const max = line.max_item || 1
-                                  const isMulti = max > 1
+                        const qty = comboItemQuantities[line.id]?.[prod.id] || 0
+                        const isSelected = qty > 0
+                        const max = line.max_item || 1
 
-                                  if (isMulti) {
-                                    // toggle membership, but do not exceed max
-                                    if (current.includes(prod.id)) {
-                                      return {
-                                        ...prev,
-                                        [line.id]: current.filter(
-                                          (id) => id !== prod.id,
-                                        ),
-                                      }
-                                    }
-                                    if (current.length >= max) return prev
-                                    return {
-                                      ...prev,
-                                      [line.id]: [...current, prod.id],
-                                    }
+                        const handleSelect = () => {
+                          const lineQuals = comboItemQuantities[line.id] || {}
+                          const totalSelected = Object.values(lineQuals).reduce((a, b) => a + (b as number), 0)
+
+                          if (max === 1) {
+                            setComboItemQuantities(prev => ({
+                              ...prev,
+                              [line.id]: { [prod.id]: isSelected ? 0 : 1 }
+                            }))
+                          } else {
+                            if (totalSelected < max) {
+                              setComboItemQuantities(prev => ({
+                                ...prev,
+                                [line.id]: {
+                                  ...prev[line.id],
+                                  [prod.id]: (prev[line.id]?.[prod.id] || 0) + 1
+                                }
+                              }))
+                            }
+                          }
+
+                          if (!isSelected) {
+                            if (prod.attributes && prod.attributes.length > 0) {
+                              const attrKey = `${line.id}-${prod.id}-attr`
+                              setComboItemAttributes((prev) => {
+                                if (prev[attrKey]) return prev
+                                const attrInitial: Record<string, number[]> = {}
+                                prod.attributes?.forEach((attr) => {
+                                  if (attr.values && attr.values.length > 0) {
+                                    attrInitial[attr.id] = [attr.values[0].id]
                                   }
-
-                                  // single-select behavior
-                                  if (current.includes(prod.id)) return prev
-                                  return { ...prev, [line.id]: [prod.id] }
                                 })
+                                return { ...prev, [attrKey]: attrInitial }
+                              })
+                            }
+                            if (prod.combo_lines) {
+                              const nestedKey = `${line.id}-${prod.id}`
+                              setNestedSelections((prev) => {
+                                if (prev[nestedKey]) return prev
+                                const nestedInitial: Record<string, number[]> = {}
+                                prod.combo_lines?.forEach((sl) => {
+                                  if (sl.required && sl.product_ids?.length > 0) {
+                                    nestedInitial[sl.id] = [sl.product_ids[0]]
+                                  }
+                                })
+                                return { ...prev, [nestedKey]: nestedInitial }
+                              })
+                            }
+                          }
+                        }
 
-                                // Auto-select defaults for attributes if any
-                                if (
-                                  prod.attributes &&
-                                  prod.attributes.length > 0
-                                ) {
-                                  const attrKey = `${line.id}-${prod.id}-attr`
-                                  setComboItemAttributes((prev) => {
-                                    if (prev[attrKey]) return prev // Already initialized
-                                    const attrInitial: Record<
-                                      string,
-                                      number[]
-                                    > = {}
-                                    prod.attributes?.forEach(
-                                      (attr: ProductAttribute) => {
-                                        if (
-                                          attr.values &&
-                                          attr.values.length > 0
-                                        ) {
-                                          attrInitial[attr.id] = [
-                                            attr.values[0].id,
-                                          ]
-                                        }
-                                      },
-                                    )
-                                    return { ...prev, [attrKey]: attrInitial }
-                                  })
-                                }
+                        const handleDecrement = (e: React.MouseEvent) => {
+                          e.stopPropagation()
+                          if (qty <= 0) return
+                          setComboItemQuantities(prev => {
+                            const lineQuals = { ...prev[line.id] }
+                            if (qty === 1) {
+                              delete lineQuals[prod.id]
+                            } else {
+                              lineQuals[prod.id] = qty - 1
+                            }
+                            return { ...prev, [line.id]: lineQuals }
+                          })
+                        }
 
-                                // Auto-select defaults for nested combos if any
-                                if (prod.combo_lines) {
-                                  const nestedKey = `${line.id}-${prod.id}`
-                                  setNestedSelections((prev) => {
-                                    if (prev[nestedKey]) return prev // Already initialized
-                                    const nestedInitial: Record<
-                                      string,
-                                      number[]
-                                    > = {}
-                                    prod.combo_lines?.forEach((sl) => {
-                                      if (
-                                        sl.required &&
-                                        sl.product_ids?.length > 0
-                                      ) {
-                                        nestedInitial[sl.id] = [
-                                          sl.product_ids[0],
-                                        ]
-                                      }
-                                    })
-                                    return {
-                                      ...prev,
-                                      [nestedKey]: nestedInitial,
-                                    }
-                                  })
+                        const handleIncrement = (e: React.MouseEvent) => {
+                          e.stopPropagation()
+                          const lineQuals = comboItemQuantities[line.id] || {}
+                          const totalSelected = Object.values(lineQuals).reduce((a, b) => a + (b as number), 0)
+                          if (totalSelected >= max) return
+                          setComboItemQuantities(prev => ({
+                            ...prev,
+                            [line.id]: {
+                              ...prev[line.id],
+                              [prod.id]: (prev[line.id]?.[prod.id] || 0) + 1
+                            }
+                          }))
+                        }
+
+                        return (
+                          <div key={prod.id}
+                            onClick={handleSelect}
+                            className={cn(
+                              'group relative flex flex-col bg-white/5 border rounded-2xl overflow-hidden transition-all duration-300 cursor-pointer hover:bg-white/10 active:scale-95',
+                              isSelected ? 'border-accent-gold ring-1 ring-accent-gold/50 shadow-xl shadow-accent-gold/5 bg-accent-gold/5' : 'border-white/10'
+                            )}>
+                            {/* Product Image */}
+                            <div className='aspect-video relative overflow-hidden bg-neutral-800'>
+                              <Image
+                                src={
+                                  typeof prod.image_256 === 'string'
+                                    ? `data:image/png;base64,${prod.image_256}`
+                                    : '/images/placeholder-food.jpg'
                                 }
-                              }}
-                              className={`px-5 py-2 rounded-2xl text-[10px] font-bold tracking-widest uppercase transition-all border cursor-pointer h-10 ${isSelected
-                                ? 'bg-accent-gold border-accent-gold text-primary shadow-lg shadow-accent-gold/20'
-                                : 'bg-white/5 border-white/10 text-white/70'
-                                }`}
-                            >
-                              {prod.name}{' '}
-                              {prod.extra_price
-                                ? `(+${formatPrice(prod.extra_price)})`
-                                : ''}
-                            </button>
+                                alt={prod.name}
+                                fill
+                                className={cn(
+                                  'object-cover transition-all duration-700 group-hover:scale-110',
+                                  !isSelected && 'opacity-60 grayscale-[0.5]'
+                                )}
+                                sizes='(max-width: 640px) 40vw, 20vw'
+                              />
+
+                              {/* Selection Overlay */}
+                              {isSelected && max === 1 && (
+                                <div className='absolute inset-0 flex items-center justify-center bg-accent-gold/10 backdrop-blur-[2px]'>
+                                  <div className='w-10 h-10 rounded-full bg-accent-gold text-primary flex items-center justify-center shadow-lg animate-in zoom-in-50 duration-300'>
+                                    <span className="text-xl font-bold">✓</span>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Price Tag */}
+                              {(prod.extra_price || 0) > 0 && (
+                                <div className='absolute top-2 left-2 px-2 py-0.5 bg-accent-gold text-primary text-[9px] font-black rounded-full shadow-lg z-10'>
+                                  +{formatPrice(prod.extra_price || 0)}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Product Info */}
+                            <div className='p-3 space-y-1.5 flex-grow flex flex-col justify-between'>
+                              <h4 className={cn(
+                                'text-[11px] font-bold line-clamp-2 leading-tight transition-colors',
+                                isSelected ? 'text-accent-gold' : 'text-white/80'
+                              )}>
+                                {prod.name}
+                              </h4>
+
+                              {max > 1 && isSelected && (
+                                <div className='flex items-center justify-between mt-auto bg-neutral-900/80 backdrop-blur-md rounded-xl p-1 border border-white/10 shadow-inner' onClick={e => e.stopPropagation()}>
+                                  <button onClick={handleDecrement} className='w-7 h-7 flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 rounded-lg transition-colors font-bold'>-</button>
+                                  <span className='text-[11px] font-black text-accent-gold px-2'>{qty}</span>
+                                  <button onClick={handleIncrement} className='w-7 h-7 flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 rounded-lg transition-colors font-bold'>+</button>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         )
                       })}
                     </div>
 
-                    {/* Render Product Attributes for selected combo item (e.g., Sides for Cheese Burger in combo) */}
-                    {comboSelections[line.id]?.map((selectedPid) => {
-                      const selectedProd = line.products?.find(
-                        (p) => p.id === selectedPid,
-                      )
-                      if (
-                        !selectedProd?.attributes ||
-                        selectedProd.attributes.length === 0
-                      )
-                        return null
+                    {/* Render Product Attributes for selected combo item */}
+                    {Object.entries(comboItemQuantities[line.id] || {}).map(([selectedPidStr, qty]) => {
+                      if ((qty as number) <= 0) return null
+                      const selectedPid = parseInt(selectedPidStr)
+                      const selectedProd = line.products?.find(p => p.id === selectedPid)
+                      if (!selectedProd?.attributes || selectedProd.attributes.length === 0) return null
 
                       return (
-                        <div
-                          key={`attr-${selectedPid}`}
-                          className='ml-4 pl-4 border-l-2 border-accent-gold/20 space-y-4 py-2 animate-in slide-in-from-left-2 duration-300'
-                        >
-                          {selectedProd.attributes.map(
-                            (attr: ProductAttribute) => (
-                              <div key={attr.id} className='space-y-3'>
-                                <Label className='text-white/50 text-[10px] uppercase tracking-widest font-bold flex items-center gap-2'>
-                                  <div className='w-1.5 h-1.5 rounded-full bg-accent-gold' />
-                                  {attr.name}
-                                </Label>
-                                <div className='flex flex-wrap gap-2'>
-                                  {attr.values?.map(
-                                    (val: {
-                                      id: number
-                                      name: string
-                                      price_extra?: number
-                                    }) => {
-                                      const attrKey = `${line.id}-${selectedPid}-attr`
-                                      const isSelected = comboItemAttributes[
-                                        attrKey
-                                      ]?.[attr.id]?.includes(val.id)
-                                      return (
-                                        <button
-                                          key={val.id}
-                                          onClick={() => {
-                                            setComboItemAttributes((prev) => {
-                                              const key = `${line.id}-${selectedPid}-attr`
-                                              const current = prev[key] || {}
-                                              return {
-                                                ...prev,
-                                                [key]: {
-                                                  ...current,
-                                                  [attr.id]: [val.id],
-                                                },
-                                              }
-                                            })
-                                          }}
-                                          className={`px-4 py-2 rounded-xl text-[9px] font-bold tracking-widest uppercase transition-all border cursor-pointer h-9 ${isSelected
-                                            ? 'bg-accent-gold/80 border-accent-gold text-primary shadow-inner'
-                                            : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'
-                                            }`}
-                                        >
-                                          {val.name}{' '}
-                                          {val.price_extra
-                                            ? `(+${formatPrice(val.price_extra)})`
-                                            : ''}
-                                        </button>
-                                      )
-                                    },
-                                  )}
-                                </div>
+                        <div key={`attr-${selectedPid}`} className='p-6 bg-neutral-900/50 rounded-3xl border border-white/5 space-y-6 animate-in slide-in-from-top-4 duration-500 shadow-2xl'>
+                          <div className="flex items-center gap-3 mb-4">
+                            <div className="w-1 h-3 rounded-full bg-accent-gold" />
+                            <span className="text-xs font-black text-white uppercase tracking-widest">Options for {selectedProd.name}</span>
+                          </div>
+                          {selectedProd.attributes.map((attr: ProductAttribute) => (
+                            <div key={attr.id} className='space-y-3'>
+                              <Label className='text-white/40 text-[9px] uppercase tracking-widest font-bold flex items-center gap-3'>
+                                {attr.name}
+                              </Label>
+                              <div className='flex flex-wrap gap-2'>
+                                {attr.values?.map((val) => {
+                                  const attrKey = `${line.id}-${selectedPid}-attr`
+                                  const isSelected = comboItemAttributes[attrKey]?.[attr.id]?.includes(val.id)
+                                  return (
+                                    <button
+                                      key={val.id}
+                                      onClick={() => {
+                                        setComboItemAttributes(prev => {
+                                          const key = `${line.id}-${selectedPid}-attr`
+                                          const current = prev[key] || {}
+                                          return { ...prev, [key]: { ...current, [attr.id]: [val.id] } }
+                                        })
+                                      }}
+                                      className={cn(
+                                        'px-4 py-2.5 rounded-xl text-[10px] font-bold tracking-widest uppercase transition-all border relative overflow-hidden',
+                                        isSelected
+                                          ? 'bg-accent-gold border-accent-gold text-primary'
+                                          : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'
+                                      )}
+                                    >
+                                      {val.name}
+                                      {val.price_extra ? <span className="ml-1 opacity-70">+{formatPrice(val.price_extra)}</span> : ''}
+                                    </button>
+                                  )
+                                })}
                               </div>
-                            ),
-                          )}
+                            </div>
+                          ))}
                         </div>
                       )
                     })}
 
-                    {/* Render Nested Combos for selected product in this line */}
-                    {comboSelections[line.id]?.map((selectedPid) => {
-                      const selectedProd = line.products?.find(
-                        (p) => p.id === selectedPid,
-                      )
+                    {/* Render Nested Combos */}
+                    {Object.entries(comboItemQuantities[line.id] || {}).map(([selectedPidStr, qty]) => {
+                      if ((qty as number) <= 0) return null
+                      const selectedPid = parseInt(selectedPidStr)
+                      const selectedProd = line.products?.find(p => p.id === selectedPid)
                       if (!selectedProd?.combo_lines) return null
 
                       return (
-                        <div
-                          key={`nested-${selectedPid}`}
-                          className='ml-4 pl-4 border-l-2 border-accent-gold/20 space-y-6 py-2 animate-in slide-in-from-left-2 duration-300'
-                        >
-                          {selectedProd.combo_lines.map((subLine) => (
-                            <div key={subLine.id} className='space-y-3'>
-                              <Label className='text-white/50 text-[10px] uppercase tracking-widest font-bold flex items-center gap-2'>
-                                <div className='w-1.5 h-1.5 rounded-full bg-accent-gold' />
-                                {subLine.name}{' '}
-                                {subLine.required && (
-                                  <span className='text-accent-chili'>*</span>
-                                )}
+                        <div key={`nested-${selectedPid}`} className='p-6 bg-neutral-900/50 rounded-3xl border border-white/5 space-y-8 animate-in slide-in-from-top-4 duration-500 shadow-2xl'>
+                          <div className="flex items-center gap-3 mb-4">
+                            <div className="w-1 h-3 rounded-full bg-accent-gold" />
+                            <span className="text-xs font-black text-white uppercase tracking-widest">Customizations for {selectedProd.name}</span>
+                          </div>
+                          {selectedProd.combo_lines.map(subLine => (
+                            <div key={subLine.id} className='space-y-4'>
+                              <Label className='text-white/40 text-[9px] uppercase tracking-widest font-bold flex items-center justify-between'>
+                                <span>{subLine.name} {subLine.required && <span className='text-accent-chili'>*</span>}</span>
                               </Label>
                               <div className='flex flex-wrap gap-2'>
-                                {subLine.products?.map((subProd) => {
-                                  const subIsSelected = nestedSelections[
-                                    `${line.id}-${selectedPid}`
-                                  ]?.[subLine.id]?.includes(subProd.id)
+                                {subLine.products?.map(subProd => {
+                                  const subIsSelected = nestedSelections[`${line.id}-${selectedPid}`]?.[subLine.id]?.includes(subProd.id)
                                   return (
                                     <button
                                       key={subProd.id}
                                       onClick={() => {
-                                        setNestedSelections((prev) => {
+                                        setNestedSelections(prev => {
                                           const key = `${line.id}-${selectedPid}`
                                           const current = prev[key] || {}
-                                          return {
-                                            ...prev,
-                                            [key]: {
-                                              ...current,
-                                              [subLine.id]: [subProd.id],
-                                            },
-                                          }
+                                          return { ...prev, [key]: { ...current, [subLine.id]: [subProd.id] } }
                                         })
                                       }}
-                                      className={`px-4 py-2 rounded-xl text-[9px] font-bold tracking-widest uppercase transition-all border cursor-pointer h-9 ${subIsSelected
-                                        ? 'bg-accent-gold/80 border-accent-gold text-primary shadow-inner'
-                                        : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'
-                                        }`}
+                                      className={cn(
+                                        'px-4 py-2.5 rounded-xl text-[10px] font-bold tracking-widest uppercase transition-all border',
+                                        subIsSelected
+                                          ? 'bg-accent-gold border-accent-gold text-primary'
+                                          : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'
+                                      )}
                                     >
-                                      {subProd.name}{' '}
-                                      {subProd.extra_price
-                                        ? `(+${formatPrice(subProd.extra_price)})`
-                                        : ''}
+                                      {subProd.name}
+                                      {subProd.extra_price ? <span className="ml-1 opacity-70">+{formatPrice(subProd.extra_price)}</span> : ''}
                                     </button>
                                   )
                                 })}

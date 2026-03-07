@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { RAM_GROUP } from '../lib/data';
 import { Product } from '@/lib/types';
 import { usePosSession } from '@/hooks/use-odoo';
+import { useProductConfigurator } from '@/hooks/use-product-configurator';
 import { useProducts } from '@/context/ProductContext';
 import dynamic from 'next/dynamic';
 
@@ -20,9 +21,13 @@ import { HeroFeatured } from '@/components/home/HeroFeatured';
 
 export const Home: React.FC<HomeProps> = ({ onNavigateMenu }) => {
   const { products, loading } = useProducts();
-  const { isOpen: isPosOpen } = usePosSession();
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+  const {
+    selectedProduct,
+    setSelectedProduct,
+    isLoadingDetails,
+    openConfigurator,
+    isPosOpen
+  } = useProductConfigurator();
 
   const handleExplore = () => {
     if (onNavigateMenu) {
@@ -32,26 +37,6 @@ export const Home: React.FC<HomeProps> = ({ onNavigateMenu }) => {
     }
   };
 
-  const openConfigurator = useCallback(async (product: Product) => {
-    if (!isPosOpen) return;
-    setIsLoadingDetails(true);
-    setSelectedProduct(product); // Open modal immediately with basic info
-    try {
-      const res = await fetch(`/api/odoo/restaurant/product-details?id=${product.id}`);
-      if (res.ok) {
-        const details = await res.json();
-        setSelectedProduct(prev => prev ? {
-          ...prev,
-          attributes: details.attributes || [],
-          combo_lines: details.combo_lines || [],
-        } : null);
-      }
-    } catch (e) {
-      console.error('Failed to fetch product details:', e);
-    } finally {
-      setIsLoadingDetails(false);
-    }
-  }, [isPosOpen]);
 
   // Featured products for the hero slider - slice 5 for variety
   const featured = products.slice(0, 5);

@@ -24,6 +24,8 @@ interface CheckoutFormInnerProps {
   onSuccess: () => void
   provider: PaymentProvider
   inlineMode?: boolean
+  isProcessing: boolean
+  setIsProcessing: (value: boolean) => void
 }
 
 const CheckoutFormInnerBase = ({
@@ -34,8 +36,9 @@ const CheckoutFormInnerBase = ({
   onSuccess,
   provider,
   inlineMode,
+  isProcessing,
+  setIsProcessing,
 }: CheckoutFormInnerProps) => {
-  const [isProcessing, setIsProcessing] = useState(false)
 
   const { formatPrice } = useCompany()
   const { session } = useSession()
@@ -124,31 +127,30 @@ const CheckoutFormInnerBase = ({
     <form
       id='checkout-form'
       onSubmit={handlePaymentSubmit}
-      className='flex flex-col h-[90vh] md:max-h-212'
+      className='flex flex-col flex-1 overflow-hidden'
     >
       {inlineMode ? (
         // Inline payment-only mode (used in multi-step wizard)
-        <div className='space-y-4'>
-          <div className='bg-neutral-900 rounded-2xl p-4 text-white space-y-6 shadow-lg'>
+        <div className='grow flex flex-col'>
+          <div className='bg-neutral-900 rounded-2xl p-4 text-white shadow-xl min-h-[300px] flex flex-col justify-center border border-white/5'>
             {provider === 'stripe' && stripe && elements ? (
-              <PaymentElement className='theme-dark' />
+              <div className="animate-in fade-in duration-500">
+                <PaymentElement
+                  className='theme-dark'
+                  options={{
+                    layout: 'accordion', // More compact for modals
+                  }}
+                />
+              </div>
             ) : (
-              <div className='text-center py-6 text-neutral-400 text-sm'>
-                Securing payment gateway...
+              <div className='flex flex-col items-center justify-center py-12 space-y-4'>
+                <Loader2 className='h-8 w-8 animate-spin text-amber-500' />
+                <span className='text-neutral-400 text-xs font-bold uppercase tracking-widest'>
+                  Securing payment gateway...
+                </span>
               </div>
             )}
           </div>
-          <Button
-            type='submit'
-            disabled={isProcessing}
-            className='w-full h-12 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-lg shadow-amber-500/20 transition-all'
-          >
-            {isProcessing ? (
-              <Loader2 className='h-5 w-5 animate-spin mr-2' />
-            ) : (
-              'Complete Payment'
-            )}
-          </Button>
         </div>
       ) : (
         // Full checkout form (original layout)

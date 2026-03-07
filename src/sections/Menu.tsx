@@ -3,6 +3,7 @@ import React, { useState, useMemo, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import { useProducts } from '@/context/ProductContext'
 import { usePosSession } from '@/hooks/use-odoo'
+import { useProductConfigurator } from '@/hooks/use-product-configurator'
 import { Badge } from '@/components/ui/badge'
 import { Product } from '@/lib/types'
 import { MenuHero } from '@/components/menu/MenuHero'
@@ -26,7 +27,14 @@ export const Menu: React.FC = () => {
     categories: posCategories,
     loading,
   } = useProducts()
-  const { isOpen: isPosOpen, loading: sessionLoading } = usePosSession()
+  const {
+    selectedProduct,
+    setSelectedProduct,
+    isLoadingDetails,
+    openConfigurator,
+    isPosOpen,
+    sessionLoading
+  } = useProductConfigurator()
 
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(
     new Set(['All']),
@@ -34,8 +42,6 @@ export const Menu: React.FC = () => {
   const [selectedTags, setSelectedTags] = useState<Set<string>>(
     new Set(['All']),
   )
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
-  const [isLoadingDetails, setIsLoadingDetails] = useState(false)
 
   const categories = useMemo(() => {
     return ['All', ...posCategories.map((c) => c.name)]
@@ -106,45 +112,6 @@ export const Menu: React.FC = () => {
     })
   }, [selectedCategories, selectedTags, menuItems, tags, posCategories])
 
-  const openConfigurator = useCallback(
-    async (product: Product) => {
-      if (!isPosOpen) return
-
-      // --- Optimization: Use pre-fetched details if available ---
-      if ((product.attributes && product.attributes.length > 0) ||
-        (product.combo_lines && product.combo_lines.length > 0)) {
-        setSelectedProduct(product)
-        setIsLoadingDetails(false)
-        return
-      }
-
-      setIsLoadingDetails(true)
-      setSelectedProduct(product) // Open modal immediately with basic info
-      try {
-        const res = await fetch(
-          `/api/odoo/restaurant/product-details?id=${product.id}`,
-        )
-        if (res.ok) {
-          const details = await res.json()
-          // Merge: keep original product fields, add attributes and combo_lines from details
-          setSelectedProduct((prev) =>
-            prev
-              ? {
-                ...prev,
-                attributes: details.attributes || [],
-                combo_lines: details.combo_lines || [],
-              }
-              : null,
-          )
-        }
-      } catch (e) {
-        console.error('Failed to fetch product details:', e)
-      } finally {
-        setIsLoadingDetails(false)
-      }
-    },
-    [isPosOpen],
-  )
 
   return (
     <section className='pt-16 pb-24 bg-neutral-950 relative' id='menu'>
@@ -180,8 +147,8 @@ export const Menu: React.FC = () => {
                   key={cat}
                   onClick={() => toggleCategory(cat)}
                   className={`whitespace-nowrap px-6 md:px-8 py-3 rounded-full text-[10px] tracking-widest uppercase transition-all border ${selectedCategories.has(cat)
-                      ? 'bg-accent-gold border-accent-gold text-primary font-bold shadow-lg shadow-accent-gold/20'
-                      : 'bg-white/5 border-white/5 text-white/90 hover:text-white cursor-pointer'
+                    ? 'bg-accent-gold border-accent-gold text-primary font-bold shadow-lg shadow-accent-gold/20'
+                    : 'bg-white/5 border-white/5 text-white/90 hover:text-white cursor-pointer'
                     }`}
                 >
                   {cat}
@@ -201,8 +168,8 @@ export const Menu: React.FC = () => {
                     key={tag}
                     onClick={() => toggleTag(tag)}
                     className={`whitespace-nowrap px-5 py-2 rounded-full text-[9px] tracking-widest uppercase transition-all border ${selectedTags.has(tag)
-                        ? 'bg-white text-primary border-white font-bold'
-                        : 'bg-white/5 border-white/10 text-white/60 hover:text-white cursor-pointer'
+                      ? 'bg-white text-primary border-white font-bold'
+                      : 'bg-white/5 border-white/10 text-white/60 hover:text-white cursor-pointer'
                       }`}
                   >
                     {tag}

@@ -21,6 +21,29 @@ export async function fulfillOdooOrder(
     orderType,
   } = payload
 
+  // 0. IDEMPOTENCY CHECK: Ensure we don't process the same Stripe ID twice
+  if (stripePaymentIntentId) {
+    const shortId = stripePaymentIntentId.slice(-6)
+    console.log(`[Fulfillment] Checking for existing order with Stripe suffix: ${shortId}`)
+    const existingOrders = await odooCall<any[]>('pos.order', 'search_read', {
+      domain: [['name', 'ilike', `Online Order - ${shortId}`]],
+      fields: ['id', 'pos_reference', 'state', 'account_move'],
+      limit: 1,
+    })
+
+    if (existingOrders.length > 0) {
+      const order = existingOrders[0]
+      console.log(`✅ [Fulfillment] Idempotency hit: Order already exists (ID: ${order.id}, Ref: ${order.pos_reference})`)
+      return {
+        orderId: order.id,
+        posReference: order.pos_reference,
+        state: order.state,
+        accountMoveName: Array.isArray(order.account_move) ? order.account_move[1] : '',
+        invoiceId: Array.isArray(order.account_move) ? order.account_move[0] : order.account_move
+      }
+    }
+  }
+
   // 1 & 2. Find active POS session and its payment methods in one go if possible
   console.log('[Fulfillment] Searching for active POS session and config...')
   const activeSessions = await odooCall<any[]>('pos.session', 'search_read', {

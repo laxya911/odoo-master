@@ -71,6 +71,7 @@ export async function GET(request: NextRequest) {
 
     const email = userData.email;
     const name = userData.name || 'Google User';
+    const picture = userData.picture || '';
 
     // 3. Find or Create User in Odoo
     const existingUsers = await odooCall<any[]>('res.users', 'search_read', {
@@ -108,7 +109,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 4. Create local JWT session
-    const userPayload = { id: userId, name: userName, email };
+    const userPayload = { id: userId, name: userName, email, image: picture };
     const session = await encrypt(userPayload);
     
     const response = NextResponse.redirect(new URL('/profile', request.url));

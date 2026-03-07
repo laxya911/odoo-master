@@ -6,6 +6,7 @@ interface User {
     id: number;
     name: string;
     email: string;
+    image?: string;
     image_1920?: string | false;
     phone?: string;
     street?: string;
