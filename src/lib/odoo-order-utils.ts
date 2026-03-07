@@ -179,6 +179,8 @@ export function expandCartItems(cartItems: CartItem[]): OrderLineItem[] {
         const itemAttrs = attributes[i] // Array of attribute IDs for this specific product
         const itemSubs = subSelections[i] // Array of combo selections for this specific product
 
+        // Since productIds already contains duplicates if quantity > 1,
+        // we just push one line per entry here.
         lines.push({
           product_id: pid,
           quantity: parentQty,
@@ -192,7 +194,7 @@ export function expandCartItems(cartItems: CartItem[]): OrderLineItem[] {
 
         // Recursively add nested combos for this item
         if (itemSubs && itemSubs.length > 0) {
-          lines.push(...expandCombo(itemSubs, parentQty))
+          lines.push(...expandCombo([itemSubs], parentQty))
         }
       }
     }

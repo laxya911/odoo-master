@@ -60,7 +60,7 @@ export default function TrackOrderPage() {
     }
 
     return (
-        <div className="container mx-auto px-4 py-12 max-w-4xl">
+        <div className="container mx-auto px-4 py-12 max-w-6xl">
             <div className="text-center mb-16 space-y-2">
                 <h1 className="text-5xl font-bold font-headline">Live <span className="text-accent-gold">Tracking</span></h1>
                 <p className="text-muted-foreground font-bold tracking-widest text-sm">ORDER ID: #{lastOrder.id}</p>

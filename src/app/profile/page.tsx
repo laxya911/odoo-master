@@ -264,6 +264,13 @@ export default function ProfilePage() {
                                     <div className="w-full h-full rounded-[2rem] bg-neutral-100 flex items-center justify-center text-accent-gold overflow-hidden">
                                         {formData.image_1920 ? (
                                             <Image src={formData.image_1920} width={1920} height={1920} alt="Profile" className="w-full h-full object-cover" />
+                                        ) : user?.image ? (
+                                            <img
+                                                src={user.image}
+                                                alt={user.name}
+                                                className="w-full h-full object-cover"
+                                                referrerPolicy="no-referrer"
+                                            />
                                         ) : user?.image_1920 ? (
                                             <Image src={`data:image/png;base64,${user.image_1920}`} width={1920} height={1920} alt="Profile" className="w-full h-full object-cover" />
                                         ) : (

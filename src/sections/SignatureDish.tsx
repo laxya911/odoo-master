@@ -3,6 +3,7 @@ import React, { useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { useProducts } from '@/context/ProductContext';
 import { usePosSession } from '@/hooks/use-odoo';
+import { useProductConfigurator } from '@/hooks/use-product-configurator';
 import { ProductCard } from '@/components/menu/ProductCard';
 import { Product } from '@/lib/types';
 
@@ -17,9 +18,13 @@ interface SignatureDishProps {
 
 export const SignatureDish: React.FC<SignatureDishProps> = ({ onNavigateMenu }) => {
     const { products, loading } = useProducts();
-    const { isOpen: isPosOpen } = usePosSession();
-    const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-    const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+    const {
+        selectedProduct,
+        setSelectedProduct,
+        isLoadingDetails,
+        openConfigurator,
+        isPosOpen
+    } = useProductConfigurator();
 
     const handleExplore = () => {
         if (onNavigateMenu) {
@@ -29,35 +34,6 @@ export const SignatureDish: React.FC<SignatureDishProps> = ({ onNavigateMenu }) 
         }
     };
 
-    const openConfigurator = useCallback(async (product: Product) => {
-        if (!isPosOpen) return;
-
-        // --- Optimization: Use pre-fetched details if available ---
-        if ((product.attributes && product.attributes.length > 0) ||
-            (product.combo_lines && product.combo_lines.length > 0)) {
-            setSelectedProduct(product);
-            setIsLoadingDetails(false);
-            return;
-        }
-
-        setIsLoadingDetails(true);
-        setSelectedProduct(product); // Open modal immediately with basic info
-        try {
-            const res = await fetch(`/api/odoo/restaurant/product-details?id=${product.id}`);
-            if (res.ok) {
-                const details = await res.json();
-                setSelectedProduct(prev => prev ? {
-                    ...prev,
-                    attributes: details.attributes || [],
-                    combo_lines: details.combo_lines || [],
-                } : null);
-            }
-        } catch (e) {
-            console.error('Failed to fetch product details:', e);
-        } finally {
-            setIsLoadingDetails(false);
-        }
-    }, [isPosOpen]);
 
     // For now, take the first 4 as "Signature"
     // Later we can filter by a specific category named "Signature"

@@ -89,7 +89,7 @@ export default function DynamicTrackOrderPage() {
     }
 
     return (
-        <div className="container mx-auto px-4 py-32 max-w-5xl">
+        <div className="container mx-auto px-4 py-32 max-w-6xl">
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-6">
                 <div className="space-y-4">
@@ -214,8 +214,8 @@ export default function DynamicTrackOrderPage() {
                                 </Button>
                             )}
                         </div>
-                        <ScrollArea className="max-h-[400px]">
-                            <CardContent className="p-8 pb-4 space-y-6">
+                        <ScrollArea className="h-[40vh] min-h-[300px] w-full">
+                            <CardContent className="p-8 pb-4">
                                 <div className="space-y-5">
                                     {order.line_items?.map((item: { qty: number; full_product_name?: string; product_id?: [number, string]; note?: string; customer_note?: string; price_subtotal_incl: number }, idx: number) => (
                                         <div key={idx} className="flex justify-between items-start gap-4">

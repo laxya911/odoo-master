@@ -42,11 +42,10 @@ export function calculateItemPricing(
   if (meta?.combo_selections) {
     meta.combo_selections.forEach(sel => {
       if (sel.extra_prices) {
-        sel.extra_prices.forEach(p => unitBasePrice += p)
+        sel.extra_prices.forEach(p => {
+          unitBasePrice += p
+        })
       }
-      
-      // Handle nested combo attributes and sub-selections if they are in the flat extra_prices
-      // (The handleAddToCart in ProductConfigurator currently flattens these into the extra_price)
     })
   }
 

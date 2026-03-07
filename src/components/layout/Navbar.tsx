@@ -85,11 +85,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   return (
     <nav
       role='navigation'
-      className={`fixed top-0 left-0 w-full px-2 md:px-14 z-50 transition-all duration-500 ${
-        isScrolled
-          ? 'py-4 glass border-b border-white/10'
-          : 'py-8 bg-transparent'
-      }`}
+      className={`fixed top-0 left-0 w-full px-2 md:px-14 z-50 transition-all duration-500 ${isScrolled
+        ? 'py-4 glass border-b border-white/10'
+        : 'py-8 bg-transparent'
+        }`}
     >
       <div className='container mx-auto px-6 flex justify-between items-center'>
         <Link
@@ -158,7 +157,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                   className='flex items-center gap-3 group/profile'
                 >
                   <div className='w-9 h-9 rounded-full bg-white/10 flex items-center justify-center group-hover/profile:bg-accent-gold transition-colors overflow-hidden'>
-                    {user?.image_1920 ? (
+                    {user?.image ? (
+                      <img
+                        src={user.image}
+                        alt={user.name}
+                        className='w-full h-full object-cover'
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : user?.image_1920 ? (
                       <Image
                         src={`data:image/png;base64,${user.image_1920}`}
                         alt={user.name}
@@ -212,11 +218,10 @@ export const Navbar: React.FC<NavbarProps> = ({
               className='relative group text-sm tracking-widest uppercase'
             >
               <span
-                className={`block transition-colors duration-300 ${
-                  currentPage === item.id
-                    ? 'text-accent-gold'
-                    : 'text-white/90 group-hover:text-white'
-                }`}
+                className={`block transition-colors duration-300 ${currentPage === item.id
+                  ? 'text-accent-gold'
+                  : 'text-white/90 group-hover:text-white'
+                  }`}
               >
                 {item.label}
               </span>
@@ -273,9 +278,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                 key={item.id}
                 href={item.href}
                 onClick={() => handleNavigate(item.id)}
-                className={`text-left text-lg font-display tracking-widest ${
-                  currentPage === item.id ? 'text-accent-gold' : 'text-white/70'
-                }`}
+                className={`text-left text-lg font-display tracking-widest ${currentPage === item.id ? 'text-accent-gold' : 'text-white/70'
+                  }`}
               >
                 {item.label}{' '}
                 <span className='text-xs text-white/30 ml-2'>
@@ -301,7 +305,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                   >
                     <div className='flex items-center gap-3'>
                       <div className='w-10 h-10 rounded-full bg-neutral-100 flex items-center justify-center text-accent-gold shadow-sm border border-neutral-100/50 overflow-hidden'>
-                        {user?.image_1920 ? (
+                        {user?.image ? (
+                          <img
+                            src={user.image}
+                            alt={user.name || 'User'}
+                            className='w-full h-full object-cover'
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : user?.image_1920 ? (
                           <Image
                             src={`data:image/png;base64,${user.image_1920}`}
                             alt={user.name || 'User'}

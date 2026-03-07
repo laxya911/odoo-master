@@ -37,6 +37,7 @@ export async function GET() {
         id: session.id,
         name: odooUser.name,
         email: odooUser.login,
+        image: session.image,
         image_1920: partner.image_1920,
         phone: partner.phone,
         street: partner.street,
