@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { odooCall, OdooClientError } from '@/lib/odoo-client'
+import { getSession } from '@/lib/auth'
 import type { PosOrder } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -28,6 +29,27 @@ export async function GET(
     }
 
     const order = orders[0]
+
+    // 1.5 Security Check: Ensure order belongs to current user
+    const session = await getSession();
+    if (session && session.id) {
+        // Get user's partner ID
+        const users = await odooCall<any[]>('res.users', 'read', {
+            ids: [session.id],
+            fields: ['partner_id']
+        });
+        if (users && users.length > 0) {
+            const userPartnerId = users[0].partner_id[0];
+            if (order.partner_id && order.partner_id[0] !== userPartnerId) {
+                console.warn(`[API /restaurant/orders/${idStr}] Unauthorized access attempt by user ${session.id} for order ${id}`);
+                return NextResponse.json({ error: 'Unauthorized access to this order' }, { status: 403 });
+            }
+        }
+    } else {
+        // If not logged in, we only allow access if the order doesn't have a partner (unlikely for POS)
+        // or if we decide to fully block it. User mentioned it should be protected.
+        return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
 
     // 2. Fetch Order Lines
     const lineIds = order.lines as number[]

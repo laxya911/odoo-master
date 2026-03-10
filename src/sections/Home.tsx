@@ -1,13 +1,13 @@
 'use client'
-import React, { useState, useCallback } from 'react';
+import React from 'react';
 import Image from 'next/image';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { RAM_GROUP } from '../lib/data';
-import { Product } from '@/lib/types';
-import { usePosSession } from '@/hooks/use-odoo';
 import { useProductConfigurator } from '@/hooks/use-product-configurator';
 import { useProducts } from '@/context/ProductContext';
 import dynamic from 'next/dynamic';
+import { useTranslations } from 'next-intl';
+import { useRouter } from '@/i18n/routing';
 
 const ProductConfigurator = dynamic(() => import('@/components/menu/ProductConfigurator').then(mod => ({ default: mod.ProductConfigurator })), {
   ssr: false,
@@ -21,6 +21,9 @@ import { HeroFeatured } from '@/components/home/HeroFeatured';
 
 export const Home: React.FC<HomeProps> = ({ onNavigateMenu }) => {
   const { products, loading } = useProducts();
+  const t = useTranslations('home');
+  const router = useRouter();
+
   const {
     selectedProduct,
     setSelectedProduct,
@@ -33,7 +36,7 @@ export const Home: React.FC<HomeProps> = ({ onNavigateMenu }) => {
     if (onNavigateMenu) {
       onNavigateMenu();
     } else {
-      window.location.href = '/menu';
+      router.push('/menu');
     }
   };
 
@@ -68,14 +71,14 @@ export const Home: React.FC<HomeProps> = ({ onNavigateMenu }) => {
               transition={{ duration: 0.8 }}
             >
               <h2 className="text-accent-gold font-body tracking-[0.4em] uppercase text-sm md:text-base mt-10">
-                Established {RAM_GROUP.established} in Ibaraki
+                {t('established', { year: RAM_GROUP.established })}
               </h2>
               <h1 className="text-5xl md:text-7xl font-display font-bold text-white mb-8 leading-tight">
-                RAM <span className="italic font-light text-white/90">Dining</span> <br />
-                Authentic Heritage
+                RAM <span className="italic font-light text-white/90">{t('dining')}</span> <br />
+                {t('heritage')}
               </h1>
               <p className="text-lg md:text-xl text-white/60 mb-12 max-w-2xl font-light leading-relaxed">
-                {RAM_GROUP.tagline} {RAM_GROUP.taglineJp} Experience the finest curries and Himalayan hospitality across our four locations.
+                {t('tagline')}
               </p>
 
               <div className="flex flex-col sm:flex-row gap-6 mb-12 lg:mb-0">
@@ -83,11 +86,11 @@ export const Home: React.FC<HomeProps> = ({ onNavigateMenu }) => {
                   onClick={handleExplore}
                   className="px-10 py-5 bg-accent-gold text-primary font-bold rounded-full tracking-widest uppercase hover:scale-105 transition-transform shadow-xl shadow-accent-gold/20"
                 >
-                  Explore Our Menu
+                  {t('explore')}
                 </button>
                 <div className="flex flex-col justify-center">
-                  <span className="text-accent-gold font-bold text-xl">Take Out 5% OFF</span>
-                  <span className="text-[10px] text-white/40 uppercase tracking-widest">Available at all locations</span>
+                  <span className="text-accent-gold font-bold text-xl">{t('takeoutOff')}</span>
+                  <span className="text-[10px] text-white/40 uppercase tracking-widest">{t('available')}</span>
                 </div>
               </div>
             </motion.div>
@@ -111,7 +114,7 @@ export const Home: React.FC<HomeProps> = ({ onNavigateMenu }) => {
           transition={{ repeat: Infinity, duration: 2 }}
           className="absolute bottom-10 left-1/2 -translate-x-1/2 text-white/30 flex flex-col items-center gap-2 hidden lg:flex"
         >
-          <span className="text-[10px] uppercase tracking-widest  text-accent-gold">Scroll</span>
+          <span className="text-[10px] uppercase tracking-widest  text-accent-gold">{t('scroll')}</span>
           <div className="w-px h-12 bg-gradient-to-b from-accent-gold to-transparent" />
         </motion.div>
       </section>
@@ -137,21 +140,21 @@ export const Home: React.FC<HomeProps> = ({ onNavigateMenu }) => {
             </div>
 
             <div className="space-y-8">
-              <h3 className="text-accent-gold uppercase tracking-[0.3em] text-sm">A Legacy of Spice</h3>
+              <h3 className="text-accent-gold uppercase tracking-[0.3em] text-sm">{t('legacy')}</h3>
               <h2 className="text-4xl md:text-5xl font-display font-bold leading-tight">
-                Crafting Joy <br /> Since {RAM_GROUP.established}
+                {t('crafting', { year: RAM_GROUP.established })}
               </h2>
               <p className="text-white/60 leading-relaxed text-lg italic">
-                &quot;Our mission is simple: to bring the authentic, uncompromised heat and hospitality of India and Nepal to Ibaraki. Every spice is hand-selected, every naan hand-stretched.&quot;
+                &quot;{t('mission')}&quot;
               </p>
               <div className="grid grid-cols-2 gap-8 pt-6 border-t border-white/5">
                 <div>
-                  <h3 className="text-2xl font-display text-accent-gold mb-2"><a href="#stores">Four Stores</a></h3>
-                  <p className="text-white/60 text-sm">Convenient locations across Mito and Hitachinaka.</p>
+                  <h3 className="text-2xl font-display text-accent-gold mb-2"><a href="#stores">{t('fourStores')}</a></h3>
+                  <p className="text-white/60 text-sm">{t('locations')}</p>
                 </div>
                 <div>
-                  <h3 className="text-2xl font-display text-accent-gold mb-2">Authenticity</h3>
-                  <p className="text-white/60 text-sm">Recipes straight from the Himalayas.</p>
+                  <h3 className="text-2xl font-display text-accent-gold mb-2">{t('authenticity')}</h3>
+                  <p className="text-white/60 text-sm">{t('recipe')}</p>
                 </div>
               </div>
             </div>

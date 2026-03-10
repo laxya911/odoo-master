@@ -6,8 +6,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Product } from '@/lib/types';
 import { generateSlug } from '@/lib/utils';
 
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, ChevronLeft } from 'lucide-react';
 import { useCompany } from '@/context/CompanyContext';
+import { useTranslations } from 'next-intl';
 
 interface HeroFeaturedProps {
   featured: Product[];
@@ -17,6 +18,7 @@ interface HeroFeaturedProps {
 export const HeroFeatured: React.FC<HeroFeaturedProps> = ({ featured, onOpenConfigurator }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const { formatPrice } = useCompany();
+  const t = useTranslations('home');
 
   // Swipe handlers
   const [touchStart, setTouchStart] = useState(0);
@@ -30,14 +32,24 @@ export const HeroFeatured: React.FC<HeroFeaturedProps> = ({ featured, onOpenConf
     setTouchEnd(e.targetTouches[0].clientX);
   };
 
+  const prevSlide = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setCurrentIndex((prev) => (prev - 1 + featured.length) % featured.length);
+  };
+
+  const nextSlide = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setCurrentIndex((prev) => (prev + 1) % featured.length);
+  };
+
   const handleTouchEnd = () => {
     if (touchStart - touchEnd > 75) {
       // Swipe left - next
-      setCurrentIndex((prev) => (prev + 1) % featured.length);
+      nextSlide();
     }
     if (touchStart - touchEnd < -75) {
       // Swipe right - previous
-      setCurrentIndex((prev) => (prev - 1 + featured.length) % featured.length);
+      prevSlide();
     }
   };
 
@@ -54,7 +66,11 @@ export const HeroFeatured: React.FC<HeroFeaturedProps> = ({ featured, onOpenConf
   const currentProduct = featured[currentIndex];
   const imageUrl = currentProduct.image_256 ? `data:image/png;base64,${currentProduct.image_256}` : '/images/placeholder-food.jpg';
 
-  const handleCardClick = () => {
+  const handleCardClick = (e: React.MouseEvent) => {
+    // Prevent opening if it was a swipe (more than 10px move)
+    if (Math.abs(touchStart - touchEnd) > 10 && touchEnd !== 0) {
+      return;
+    }
     if (onOpenConfigurator) {
       onOpenConfigurator(currentProduct);
     }
@@ -87,7 +103,7 @@ export const HeroFeatured: React.FC<HeroFeaturedProps> = ({ featured, onOpenConf
               src={imageUrl}
               alt={currentProduct.name}
               fill
-              className="object-cover opacity-60"
+              className="object-cover opacity-60 transition-transform duration-700 hover:scale-105"
               sizes="(max-width: 1024px) 100vw, 500px"
               priority={currentIndex === 0}
               quality={60}
@@ -105,7 +121,7 @@ export const HeroFeatured: React.FC<HeroFeaturedProps> = ({ featured, onOpenConf
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-px bg-accent-gold" />
                     <span className="text-accent-gold text-[10px] uppercase tracking-[0.3em] font-bold">
-                      Featured Dish
+                      {t('featuredDish')}
                     </span>
                   </div>
                   <Link
@@ -113,7 +129,7 @@ export const HeroFeatured: React.FC<HeroFeaturedProps> = ({ featured, onOpenConf
                     className="flex items-center gap-1 text-[10px] text-white/40 uppercase tracking-widest hover:text-accent-gold transition-colors"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    View Details <ChevronRight size={12} />
+                    {t('viewDetails')} <ChevronRight size={12} />
                   </Link>
                 </div>
 
@@ -140,11 +156,12 @@ export const HeroFeatured: React.FC<HeroFeaturedProps> = ({ featured, onOpenConf
                           e.stopPropagation();
                           setCurrentIndex(idx);
                         }}
-                        aria-label={`View ${item.name} featured dish`}
-                        aria-current={idx === currentIndex ? 'true' : 'false'}
-                        className={`w-12 h-1 rounded-full transition-all duration-500 ${idx === currentIndex ? 'bg-accent-gold' : 'bg-white/20 hover:bg-white/40'
-                          }`}
-                      />
+                        aria-label={`View ${item.name}`}
+                        className="group/dot p-2 -m-2" /* Increased hit area */
+                      >
+                        <div className={`w-8 h-1 rounded-full transition-all duration-500 ${idx === currentIndex ? 'bg-accent-gold w-12' : 'bg-white/20 group-hover/dot:bg-white/40'
+                          }`} />
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -152,6 +169,26 @@ export const HeroFeatured: React.FC<HeroFeaturedProps> = ({ featured, onOpenConf
             </div>
           </motion.div>
         </AnimatePresence>
+
+        {/* Side Arrows - Only visible on desktop hover or mobile taps */}
+        <div className="absolute inset-y-0 left-0 flex items-center pl-4 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+          <button
+            onClick={prevSlide}
+            className="w-10 h-10 rounded-full bg-neutral-900/50 backdrop-blur-md border border-white/10 flex items-center justify-center text-white hover:bg-accent-gold hover:text-primary transition-all shadow-xl"
+            aria-label="Previous Slide"
+          >
+            <ChevronLeft size={20} />
+          </button>
+        </div>
+        <div className="absolute inset-y-0 right-0 flex items-center pr-4 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+          <button
+            onClick={nextSlide}
+            className="w-10 h-10 rounded-full bg-neutral-900/50 backdrop-blur-md border border-white/10 flex items-center justify-center text-white hover:bg-accent-gold hover:text-primary transition-all shadow-xl"
+            aria-label="Next Slide"
+          >
+            <ChevronRight size={20} />
+          </button>
+        </div>
       </div>
     </div>
   );

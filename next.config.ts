@@ -1,4 +1,7 @@
 import type { NextConfig } from 'next'
+import createNextIntlPlugin from 'next-intl/plugin';
+
+const withNextIntl = createNextIntlPlugin();
 
 const nextConfig: NextConfig = {
   /* config options here */
@@ -32,35 +35,15 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: '*.googleusercontent.com',
+        port: '',
+        pathname: '/**',
+      },
     ],
   },
 
-  async headers() {
-    const cspHeader = `
-      default-src 'self';
-      script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://m.stripe.network https://hcaptcha.com https://*.hcaptcha.com;
-      script-src-elem 'self' 'unsafe-inline' https://js.stripe.com https://m.stripe.network https://hcaptcha.com https://*.hcaptcha.com;
-      frame-src 'self' https://js.stripe.com https://challenges.cloudflare.com;
-      connect-src 'self' https://api.stripe.com https://m.stripe.network https://demo.primetek.in wss://demo.primetek.in;
-      img-src 'self' data: blob: https://*.stripe.com https://demo.primetek.in https://lh3.googleusercontent.com https://*.googleusercontent.com;
-      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-      style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com;
-      font-src 'self' https://fonts.gstatic.com data:;
-      object-src 'none';
-    `.replace(/\s{2,}/g, ' ').trim();
-
-    return [
-      {
-        source: '/(.*)',
-        headers: [
-          {
-            key: 'Content-Security-Policy',
-            value: cspHeader,
-          },
-        ],
-      },
-    ]
-  },
 }
 
-export default nextConfig
+export default withNextIntl(nextConfig)

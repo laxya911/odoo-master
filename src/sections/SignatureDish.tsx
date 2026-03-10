@@ -6,6 +6,7 @@ import { usePosSession } from '@/hooks/use-odoo';
 import { useProductConfigurator } from '@/hooks/use-product-configurator';
 import { ProductCard } from '@/components/menu/ProductCard';
 import { Product } from '@/lib/types';
+import { useTranslations } from 'next-intl';
 
 const ProductConfigurator = dynamic(() => import('@/components/menu/ProductConfigurator').then(mod => ({ default: mod.ProductConfigurator })), {
     ssr: false,
@@ -17,6 +18,7 @@ interface SignatureDishProps {
 
 
 export const SignatureDish: React.FC<SignatureDishProps> = ({ onNavigateMenu }) => {
+    const t = useTranslations('signature');
     const { products, loading } = useProducts();
     const {
         selectedProduct,
@@ -45,14 +47,14 @@ export const SignatureDish: React.FC<SignatureDishProps> = ({ onNavigateMenu }) 
             <section className="py-20 bg-neutral-900 border-y border-white/5">
                 <div className="container mx-auto px-6 mb-16 flex justify-between items-end">
                     <div>
-                        <h3 className="text-accent-gold uppercase tracking-[0.3em] text-sm mb-4">Lunch Favorites</h3>
-                        <h2 className="text-4xl md:text-5xl font-display font-bold">Chef&apos;s Recommendations</h2>
+                        <h3 className="text-accent-gold uppercase tracking-[0.3em] text-sm mb-4">{t('subtitle')}</h3>
+                        <h2 className="text-4xl md:text-5xl font-display font-bold">{t('title')}</h2>
                     </div>
                     <button
                         onClick={handleExplore}
                         className="hidden md:block text-accent-gold border-b border-accent-gold/30 hover:border-accent-gold transition-colors pb-1 text-sm uppercase tracking-widest"
                     >
-                        See Full Menu
+                        {useTranslations('menu')('title')}
                     </button>
                 </div>
 

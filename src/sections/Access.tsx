@@ -1,197 +1,155 @@
 'use client'
-import React, { useState } from 'react'
-import Image from 'next/image'
-import { RAM_GROUP } from '../lib/data'
+import React from 'react';
+import { RAM_GROUP } from '@/lib/data';
+import { MapPin, Phone, Clock, Navigation, Info, Copy, CheckCircle2 } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { useTranslations } from 'next-intl';
+import { useDynamicTranslation } from '@/hooks/use-dynamic-translation';
 
 export const Access: React.FC = () => {
-  const [selectedStoreId, setSelectedStoreId] = useState(RAM_GROUP.stores[0].id)
-  const [copied, setCopied] = useState(false)
-  const selectedStore = RAM_GROUP.stores.find((s) => s.id === selectedStoreId)!
+  const [copiedId, setCopiedId] = React.useState<string | null>(null);
+  const t = useTranslations('access');
+  const { translate } = useDynamicTranslation();
 
-  const handleCopyAddress = () => {
-    navigator.clipboard.writeText(selectedStore.address)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
-  const handleOpenMaps = () => {
-    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedStore.address + ' ' + selectedStore.name)}`
-    window.open(url, '_blank')
-  }
+  const copyAddress = (address: string, id: string) => {
+    navigator.clipboard.writeText(address);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
 
   return (
-    <div className='pt-26 pb-20 bg-neutral-950' id='stores'>
-      <div className='container mx-auto px-10'>
-        <header className='mb-20'>
-          <div className='flex items-center gap-4 mb-4'>
-            <div className='w-8 h-px bg-accent-gold' />
-            <h3 className='text-accent-gold uppercase tracking-[0.3em] text-sm font-bold'>
-              Find Your RAM
-            </h3>
+    <section id="stores" className="py-32 bg-neutral-950 relative overflow-hidden">
+      <div className="container mx-auto px-6 relative z-10">
+        <div className="flex flex-col md:flex-row md:items-end justify-between mb-16 gap-6">
+          <div>
+            <Badge variant="outline" className="text-accent-gold border-accent-gold/30 mb-4 px-4 py-1">
+              {t('findYourRam')}
+            </Badge>
+            <h2 className="text-5xl md:text-6xl font-display font-bold text-white tracking-tight italic">
+              {t('title')}
+            </h2>
           </div>
-          <h1 className='text-5xl md:text-6xl font-display font-bold'>
-            Stores & Access
-          </h1>
-        </header>
+        </div>
 
-        {/* Store Selector */}
-        <div className='flex flex-wrap gap-4 mb-16 border-b border-white/5 pb-8'>
+        <div className="grid lg:grid-cols-2 gap-8">
           {RAM_GROUP.stores.map((store) => (
-            <button
-              key={store.id}
-              onClick={() => setSelectedStoreId(store.id)}
-              className={`relative px-6 py-4 transition-all cursor-pointer ${
-                selectedStoreId === store.id
-                  ? 'text-white'
-                  : 'text-white/70 hover:text-white/90'
-              }`}
-            >
-              <span className='block text-sm font-bold uppercase tracking-widest'>
-                {store.name}
-              </span>
-              <span className='block text-[12px] text-white/70 font-jp'>
-                {store.nameJp}
-              </span>
-              {selectedStoreId === store.id && (
-                <div className='absolute bottom-0 left-0 w-full h-1 bg-accent-gold transition-all' />
-              )}
-            </button>
+            <Card key={store.id} className="bg-white/5 border-white/10 hover:border-accent-gold/30 transition-all group overflow-hidden">
+              <CardContent className="p-0">
+                <div className="grid md:grid-cols-2">
+                  <div className="p-8 space-y-8">
+                    <div>
+                      <h3 className="text-2xl font-display font-medium text-white mb-2 group-hover:text-accent-gold transition-colors">
+                        {translate(store.name)}
+                      </h3>
+                      <div className="flex items-start gap-3 mt-4">
+                        <MapPin className="w-5 h-5 text-accent-gold shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-white/80 leading-relaxed text-sm">
+                            {translate(store.address)}
+                          </p>
+                          <button
+                            onClick={() => copyAddress(store.address, store.id)}
+                            className="flex items-center gap-2 text-xs text-accent-gold/70 hover:text-accent-gold mt-3 font-medium transition-colors"
+                          >
+                            {copiedId === store.id ? (
+                              <>
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                {t('copied')}
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3.5 h-3.5" />
+                                {t('copyAddress')}
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-accent-gold">
+                          <Clock className="w-4 h-4" />
+                          <span className="text-xs font-bold uppercase tracking-widest">{t('serviceHours')}</span>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-xs">
+                            <span className="text-white/40">{t('lunch')}</span>
+                            <span className="text-white/80 font-medium">{store.hours.lunch}</span>
+                          </div>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-white/40">{t('dinner')}</span>
+                            <span className="text-white/80 font-medium">{store.hours.dinner}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-accent-gold">
+                          <Phone className="w-4 h-4" />
+                          <span className="text-xs font-bold uppercase tracking-widest">{t('directContact')}</span>
+                        </div>
+                        <p className="text-white/80 text-sm font-medium">{store.phone}</p>
+                      </div>
+                    </div>
+
+                    <div className="pt-6 border-t border-white/5 space-y-4">
+                      <div className="flex items-start gap-3">
+                        <Info className="w-4 h-4 text-accent-gold shrink-0 mt-1" />
+                        <div className="space-y-2">
+                          <p className="text-white/60 text-xs leading-relaxed italic">
+                            {translate(store.note)}
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            <Badge variant="secondary" className="bg-white/5 text-white/40 border-none text-[10px] py-0 h-5">
+                              {t('availableInfo')}
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-3">
+                        <Button
+                          variant="outline"
+                          className="w-full bg-accent-gold text-neutral-900 border-none hover:bg-white transition-all font-bold text-xs h-11"
+                          onClick={() => {
+                            const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(store.address + ' ' + store.name)}`
+                            window.open(url, '_blank')
+                          }}
+                        >
+                          <Navigation className="w-4 h-4 mr-2" />
+                          {t('getDirections')}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="relative h-full min-h-[300px] md:min-h-0 bg-neutral-900 overflow-hidden">
+                    <div className="absolute inset-0 bg-accent-gold/20 mix-blend-overlay group-hover:opacity-0 transition-opacity z-10" />
+                    <img
+                      src="https://images.unsplash.com/photo-1526778548025-fa2f459cd5c1?auto=format&fit=crop&q=80&w=1000"
+                      alt={translate(store.name)}
+                      className="absolute inset-0 w-full h-full object-cover scale-105 group-hover:scale-100 transition-transform duration-700 opacity-60"
+                    />
+                    <div className="absolute bottom-0 left-0 right-0 p-8 bg-gradient-to-t from-neutral-950 to-transparent z-20">
+                      <div className="flex items-center gap-2 text-accent-gold mb-1">
+                        <Info className="w-4 h-4" />
+                        <span className="text-[10px] font-bold uppercase tracking-widest">{t('parkingSupport')}</span>
+                      </div>
+                      <p className="text-white/80 text-sm font-medium leading-relaxed">
+                        {translate(store.parkingInfo) || t('parkingDefault')}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           ))}
         </div>
-
-        <div className='grid lg:grid-cols-2 gap-16'>
-          {/* content changes without animation for simplicity and performance */}
-          <div
-            key={selectedStoreId}
-            className='space-y-12 transition-opacity duration-300'
-          >
-            <div>
-              <h2 className='text-3xl font-display font-bold mb-6 text-white'>
-                {selectedStore.name}
-              </h2>
-              <p className='text-xl text-white/60 mb-6 leading-relaxed'>
-                {selectedStore.address}
-              </p>
-              <div className='flex gap-4'>
-                <button
-                  onClick={handleCopyAddress}
-                  className='px-6 py-3 bg-white/5 border border-white/10 text-white text-xs uppercase tracking-widest font-bold hover:bg-white/10 transition-colors rounded-full relative'
-                >
-                  {copied ? 'Copied!' : 'Copy Address'}
-                </button>
-                <button
-                  onClick={handleOpenMaps}
-                  className='px-6 py-3 bg-accent-gold text-primary text-xs uppercase tracking-widest font-bold hover:bg-white transition-colors rounded-full'
-                >
-                  Open Google Maps
-                </button>
-              </div>
-            </div>
-
-            <div className='grid md:grid-cols-2 gap-12 pt-12 border-t border-white/5'>
-              <div className='space-y-6'>
-                <h3 className='text-xs uppercase tracking-[0.3em] text-accent-gold font-bold'>
-                  Service Hours
-                </h3>
-                <div className='space-y-4'>
-                  <div className='flex justify-between items-center'>
-                    <span className='text-white/70 text-sm font-light'>
-                      Lunch
-                    </span>
-                    <span className='font-bold text-white text-sm'>
-                      {selectedStore.hours.lunch}
-                    </span>
-                  </div>
-                  <div className='flex justify-between items-center'>
-                    <span className='text-white/70 text-sm font-light'>
-                      Dinner
-                    </span>
-                    <span className='font-bold text-white text-sm'>
-                      {selectedStore.hours.dinner}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className='space-y-6'>
-                <h3 className='text-xs uppercase tracking-[0.3em] text-accent-gold font-bold'>
-                  Parking Support
-                </h3>
-                <div className='space-y-2'>
-                  <p className='text-white/70 text-sm leading-relaxed'>
-                    {selectedStore.parkingInfo ||
-                      'Street parking or nearby coin parking available.'}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className='space-y-6 pt-12 border-t border-white/5'>
-              <h3 className='text-xs uppercase tracking-[0.3em] text-accent-gold font-bold'>
-                Direct Contact
-              </h3>
-              <a
-                href={`tel:${selectedStore.phone.replace(/[^0-9]/g, '')}`}
-                className='block text-3xl font-display text-white tracking-tighter hover:text-accent-gold transition-colors'
-              >
-                {selectedStore.phone}
-              </a>
-            </div>
-
-            {selectedStore.note && (
-              <div className='p-8 bg-accent-gold/5 border-l-4 border-accent-gold rounded-r-2xl'>
-                <p className='text-white/70 text-sm leading-relaxed italic'>
-                  &quot;{selectedStore.note}&quot;
-                </p>
-              </div>
-            )}
-          </div>{' '}
-          {/* end of details container */}
-          <div className='relative h-150 rounded-[40px] overflow-hidden bg-neutral-900 border border-white/10 group shadow-2xl'>
-            <Image
-              src='https://images.unsplash.com/photo-1526778548025-fa2f459cd5c1?auto=format&fit=crop&q=80&w=1000'
-              alt='Mito City view'
-              fill
-              className='w-full h-full object-cover opacity-20 grayscale group-hover:grayscale-0 transition-all duration-1000'
-              priority
-              fetchPriority='high'
-            />
-            <div className='absolute inset-0 flex items-center justify-center'>
-              <div className='text-center p-12 glass border border-white/10 rounded-4xl max-w-sm shadow-2xl'>
-                <div className='w-16 h-16 bg-accent-gold rounded-full mx-auto mb-6 flex items-center justify-center shadow-xl'>
-                  <svg
-                    className='w-8 h-8 text-primary'
-                    fill='currentColor'
-                    viewBox='0 0 20 20'
-                  >
-                    <path
-                      fillRule='evenodd'
-                      d='M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z'
-                      clipRule='evenodd'
-                    />
-                  </svg>
-                </div>
-                <h3 className='font-display text-2xl mb-2'>
-                  {selectedStore.name}
-                </h3>
-                <p className='text-xs text-white/70 mb-6 tracking-widest uppercase'>
-                  {selectedStore.nameJp}
-                </p>
-                <div className='h-px w-12 bg-accent-gold/30 mx-auto mb-6' />
-                <p className='text-xs text-white/70 mb-8 italic'>
-                  Available for Dine-in and Takeaway
-                </p>
-                <button
-                  onClick={handleOpenMaps}
-                  className='text-[10px] tracking-widest uppercase font-bold text-accent-gold border border-accent-gold/40 px-8 py-3 rounded-full cursor-pointer hover:bg-accent-gold hover:text-primary transition-all'
-                >
-                  Get Directions
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
-    </div>
+    </section>
   )
 }

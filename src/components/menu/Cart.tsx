@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import Image from 'next/image'
-import { useToast } from '@/hooks/use-toast'
+import { toast } from 'sonner'
 import { useCompany } from '@/context/CompanyContext'
 import { useAuth } from '@/context/AuthContext'
 import { useRouter } from 'next/navigation'
@@ -20,6 +20,8 @@ import { useSession } from '@/context/SessionContext'
 import { useProducts } from '@/context/ProductContext'
 import { CheckoutDialog } from './CheckoutDialog'
 import { calculateItemPricing } from '@/lib/pricing-utils'
+import { useTranslations } from 'next-intl'
+import { useDynamicTranslation } from '@/hooks/use-dynamic-translation'
 
 interface ProductTaxData {
   product_id: number
@@ -32,6 +34,9 @@ interface ProductTaxData {
 }
 
 export function Cart() {
+  const t = useTranslations('cart');
+  const commonT = useTranslations('common');
+  const { translate } = useDynamicTranslation()
   const {
     cartItems,
     getCartTotal,
@@ -43,7 +48,6 @@ export function Cart() {
     setIsCheckoutOpen,
     getCartBreakdown,
   } = useCart()
-  const { toast } = useToast()
   const { formatPrice } = useCompany()
   const { session } = useSession()
   const { isAuthenticated } = useAuth()
@@ -56,13 +60,6 @@ export function Cart() {
   const displaySubtotal = subtotal
   const totalTax = tax
 
-  // const handleNoteChange = useDebouncedCallback(
-  //   (cartItemId: string, notes: string) => {
-  //     updateItemNotes(cartItemId, notes)
-  //   },
-  //   500,
-  // )
-
 
   return (
     <>
@@ -70,7 +67,7 @@ export function Cart() {
         <div className='flex items-center justify-between p-6 border-b'>
           <h2 className='text-2xl font-bold flex items-center gap-2'>
             <ShoppingBag className="h-6 w-6" />
-            Your Order
+            {t('title')}
           </h2>
           {cartItems.length > 0 && (
             <Button
@@ -79,17 +76,9 @@ export function Cart() {
               onClick={clearCart}
               className='text-destructive hover:text-destructive hover:bg-destructive/10'
             >
-              Clear All
+              {t('clear')}
             </Button>
           )}
-          {/* <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setIsCartOpen(false)}
-            className="rounded-full hover:bg-secondary/50"
-          >
-            <X className="h-5 w-5" />
-          </Button> */}
         </div>
 
         {cartItems.length === 0 ? (
@@ -98,16 +87,16 @@ export function Cart() {
               <ShoppingBag className="h-12 w-12 text-muted-foreground/50" />
             </div>
             <div className="space-y-2">
-              <p className='text-lg font-semibold'>Your cart is empty.</p>
+              <p className='text-lg font-semibold'>{t('empty')}</p>
               <p className='text-sm text-muted-foreground px-8 mb-4'>
-                Looks like you haven't added anything to your cart yet.
+                {t('emptyDesc')}
               </p>
               <Button
                 variant="outline"
                 onClick={() => setIsCartOpen(false)}
                 className="mt-4 border-accent-gold/50 text-accent-gold hover:bg-accent-gold/10"
               >
-                Continue Shopping
+                {t('continue')}
               </Button>
             </div>
           </div>
@@ -123,7 +112,7 @@ export function Cart() {
                           ? `data:image/png;base64,${item.product.image_256}`
                           : 'https://picsum.photos/seed/fooditem/100'
                       }
-                      alt={item.product.name}
+                      alt={translate(item.product.name)}
                       fill
                       className='object-cover'
                     />
@@ -131,7 +120,7 @@ export function Cart() {
                   <div className='flex-1 flex flex-col justify-between'>
                     <div>
                       <div className="flex justify-between items-start">
-                        <p className='font-semibold line-clamp-1 mr-2'>{item.product.name}</p>
+                        <p className='font-semibold line-clamp-1 mr-2'>{translate(item.product.name)}</p>
                         <p className='font-bold text-accent-gold'>
                           {formatPrice(calculateItemPricing(item.product, item.meta, taxes, defaultTaxId).totalPaid * item.quantity)}
                         </p>
@@ -139,14 +128,12 @@ export function Cart() {
                       <div className="space-y-0.5 mt-1">
                         {/* Attributes display */}
                         {item.meta?.attribute_value_ids?.map((vid) => {
-                          // Try to find the value name in ANY attribute of the product
-                          // product.details.attributes is the usual place in this project
                           let foundValName = "";
                           item.product.details?.attributes?.forEach((attr: { values: Array<{ id: number; name: string; price_extra?: number }> }) => {
                             const val = attr.values.find((v) => v.id === vid);
                             if (val) {
                               const priceMarker = val.price_extra ? ` (+${formatPrice(val.price_extra)})` : '';
-                              foundValName = `${val.name}${priceMarker}`;
+                              foundValName = `${translate(val.name)}${priceMarker}`;
                             }
                           });
                           return foundValName ? (
@@ -167,14 +154,13 @@ export function Cart() {
                                 const comboProd = line?.products?.find((p) => p.id === pid);
                                 if (!comboProd) return null;
 
-                                // Sub-attributes for this combo item
                                 const subAttrs = combo.combo_item_attributes?.[pIdx];
                                 const subSelections = combo.sub_selections?.[pIdx];
 
                                 return (
                                   <div key={`${pid}-${pIdx}`}>
                                     <p className="text-[10px] text-accent-gold/90 italic font-medium">
-                                      + {comboProd.name}
+                                      + {translate(comboProd.name)}
                                     </p>
 
                                     {/* Sub-attributes */}
@@ -182,7 +168,7 @@ export function Cart() {
                                       let foundName = "";
                                       comboProd.attributes?.forEach(attr => {
                                         const val = attr.values.find(v => v.id === vid);
-                                        if (val) foundName = val.name;
+                                        if (val) foundName = translate(val.name);
                                       });
                                       return foundName ? (
                                         <p key={vid} className="text-[9px] text-muted-foreground/70 ml-2">
@@ -200,7 +186,7 @@ export function Cart() {
                                             const sp = subLine?.products?.find(p => p.id === spid);
                                             return sp ? (
                                               <p key={spid} className="text-[9px] text-accent-gold/70 italic">
-                                                └ {sp.name}
+                                                └ {translate(sp.name)}
                                               </p>
                                             ) : null;
                                           })}
@@ -222,7 +208,7 @@ export function Cart() {
                         )}
 
                         <p className="text-[11px] text-muted-foreground/60 mt-1">
-                          {formatPrice(calculateItemPricing(item.product, item.meta, taxes, defaultTaxId).unitPrice)} each
+                          {formatPrice(calculateItemPricing(item.product, item.meta, taxes, defaultTaxId).unitPrice)} {t('each')}
                         </p>
                       </div>
                     </div>
@@ -273,18 +259,18 @@ export function Cart() {
         <div className='mt-auto border-t bg-card px-2 pt-2 pb-6 shadow-[0_-5px_20px_-5px_rgba(0,0,0,0.1)]'>
           <div className='space-y-2 mb-4'>
             <div className='flex justify-between text-sm'>
-              <span className='text-muted-foreground'>Subtotal</span>
+              <span className='text-muted-foreground'>{t('subtotal')}</span>
               <span>{formatPrice(displaySubtotal)}</span>
             </div>
             {totalTax > 0 && (
               <div className='flex justify-between text-sm'>
-                <span className='text-muted-foreground'>Tax</span>
+                <span className='text-muted-foreground'>{t('tax')}</span>
                 <span>{formatPrice(totalTax)}</span>
               </div>
             )}
             <Separator className="bg-accent-gold" />
             <div className='flex justify-between items-end'>
-              <span className='text-lg font-semibold'>Total</span>
+              <span className='text-lg font-semibold'>{t('total')}</span>
               <span className='text-2xl font-bold  bg-primary/10 px-3 py-1 rounded-md'>{formatPrice(total)}</span>
             </div>
           </div>
@@ -295,9 +281,8 @@ export function Cart() {
             disabled={cartItems.length === 0 || !session.isOpen}
             onClick={() => {
               if (!isAuthenticated) {
-                toast({
-                  title: 'Sign In Required',
-                  description: 'Please log in or sign up to complete your checkout.',
+                toast.error(commonT('loginRequired') || 'Sign In Required', {
+                  description: commonT('loginRequiredDesc') || 'Please log in or sign up to complete your checkout.',
                 })
                 router.push(`/auth?callbackUrl=${encodeURIComponent(window.location.href)}`)
                 return
@@ -305,7 +290,7 @@ export function Cart() {
               setIsCheckoutOpen(true)
             }}
           >
-            {!session.isOpen ? 'Store Closed' : 'Checkout'}
+            {!session.isOpen ? t('closed') : t('checkout')}
           </Button>
 
           <Button
@@ -313,7 +298,7 @@ export function Cart() {
             className="w-full text-accent-gold border-accent-gold/30 hover:bg-accent-gold/10 font-bold transition-all h-10 rounded-xl"
             onClick={() => setIsCartOpen(false)}
           >
-            Continue Shopping
+            {t('continue')}
           </Button>
         </div>
       </div>

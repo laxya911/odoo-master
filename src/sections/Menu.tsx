@@ -8,6 +8,8 @@ import { Badge } from '@/components/ui/badge'
 import { Product } from '@/lib/types'
 import { MenuHero } from '@/components/menu/MenuHero'
 import { ProductCard } from '@/components/menu/ProductCard'
+import { useTranslations } from 'next-intl'
+import { useDynamicTranslation } from '@/hooks/use-dynamic-translation'
 
 // Dynamic import for ProductConfigurator to reduce initial bundle
 const ProductConfigurator = dynamic(
@@ -35,6 +37,8 @@ export const Menu: React.FC = () => {
     isPosOpen,
     sessionLoading
   } = useProductConfigurator()
+  const t = useTranslations('menu')
+  const { translate } = useDynamicTranslation()
 
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(
     new Set(['All']),
@@ -119,16 +123,16 @@ export const Menu: React.FC = () => {
       <div className='container mx-auto px-6'>
         <header className='max-w-4xl mb-8'>
           <Badge variant='outline' className='mb-2'>
-            Digital Concierge
+            {t('digitalConcierge')}
           </Badge>
           <div className='flex flex-col md:flex-row md:items-end gap-6 mb-6'>
             <h1 className='text-4xl md:text-6xl font-display font-bold tracking-tight text-white grow'>
-              Experience RAM Menu
+              {t('title')}
             </h1>
             {!sessionLoading && !isPosOpen && (
               <div className='bg-accent-chili/10 border border-accent-chili/30 px-6 py-3 rounded-2xl'>
                 <p className='text-accent-chili text-xs font-bold uppercase tracking-widest'>
-                  Kitchen Closed • Ordering Unavailable
+                  {t('closed')}
                 </p>
               </div>
             )}
@@ -139,7 +143,7 @@ export const Menu: React.FC = () => {
         <div className='flex flex-col gap-6 mb-12'>
           <div>
             <h3 className='text-white/40 text-[10px] uppercase font-bold tracking-[0.2em] mb-4 ml-1'>
-              Categories
+              {t('categories')}
             </h3>
             <div className='flex flex-wrap gap-2 md:gap-3 overflow-x-auto pb-2 no-scrollbar'>
               {categories.map((cat) => (
@@ -151,7 +155,7 @@ export const Menu: React.FC = () => {
                     : 'bg-white/5 border-white/5 text-white/90 hover:text-white cursor-pointer'
                     }`}
                 >
-                  {cat}
+                  {cat === 'All' ? t('all') : translate(cat)}
                 </button>
               ))}
             </div>
@@ -160,7 +164,7 @@ export const Menu: React.FC = () => {
           {tagList.length > 1 && (
             <div>
               <h3 className='text-white/40 text-[10px] uppercase font-bold tracking-[0.2em] mb-4 ml-1'>
-                Special Diets & Tags
+                {t('diets')}
               </h3>
               <div className='flex flex-wrap gap-2 md:gap-3 overflow-x-auto pb-2 no-scrollbar'>
                 {tagList.map((tag) => (
@@ -172,7 +176,7 @@ export const Menu: React.FC = () => {
                       : 'bg-white/5 border-white/10 text-white/60 hover:text-white cursor-pointer'
                       }`}
                   >
-                    {tag}
+                    {tag === 'All' ? t('all') : translate(tag)}
                   </button>
                 ))}
               </div>

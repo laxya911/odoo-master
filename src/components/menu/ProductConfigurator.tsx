@@ -10,6 +10,8 @@ import { useCompany } from '@/context/CompanyContext'
 import { useSession } from '@/context/SessionContext'
 import { cn } from '@/lib/utils'
 import { useProducts } from '@/context/ProductContext'
+import { useTranslations } from 'next-intl'
+import { useDynamicTranslation } from '@/hooks/use-dynamic-translation'
 
 interface ProductConfiguratorProps {
   product: Product
@@ -26,6 +28,10 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
   const { formatPrice } = useCompany()
   const { session } = useSession()
   const { taxes, getInclusivePrice, defaultTaxId } = useProducts()
+  const t = useTranslations('menu')
+  const cartT = useTranslations('cart')
+  const commonT = useTranslations('common')
+  const { translate } = useDynamicTranslation()
 
   // Use attributes if available
   const attributes = useMemo(
@@ -346,14 +352,14 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
           <div className='grow overflow-y-auto p-4 md:p-8 space-y-6 no-scrollbar pb-12'>
             <div>
               <Badge variant='secondary' className='mb-2 h-6'>
-                Configure Dish
+                {t('customize') || 'Configure Dish'}
               </Badge>
               <h2 className='text-3xl md:text-4xl font-display font-bold text-white text-balance'>
-                {product.name}
+                {translate(product.name)}
               </h2>
               {typeof product.details?.description_sale === 'string' && (
                 <p className='text-white/70 text-sm italic mt-2 leading-relaxed'>
-                  {product.details.description_sale}
+                  {translate(product.details.description_sale)}
                 </p>
               )}
             </div>
@@ -363,7 +369,7 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
               <div className='flex items-center justify-center py-6 gap-3'>
                 <div className='w-5 h-5 border-2 border-accent-gold border-t-transparent rounded-full animate-spin' />
                 <span className='text-white/50 text-sm'>
-                  Loading options...
+                  {commonT('loading')}
                 </span>
               </div>
             )}
@@ -372,7 +378,7 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
             {!isLoadingDetails &&
               attributes.map((attr: ProductAttribute) => (
                 <div key={attr.id} className='space-y-4'>
-                  <Label className='mb-0 text-white/70'>{attr.name}</Label>
+                  <Label className='mb-0 text-white/70'>{translate(attr.name)}</Label>
                   <div className='flex flex-wrap gap-2'>
                     {attr.values.map(
                       (val: {
@@ -411,7 +417,7 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                               : 'bg-white/5 border-white/10 text-white/70'
                               }`}
                           >
-                            {val.name}{' '}
+                            {translate(val.name)}{' '}
                             {val.price_extra
                               ? `(+${formatPrice(val.price_extra)})`
                               : ''}
@@ -429,7 +435,7 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                 <div key={line.id} className='space-y-4'>
                   <Label className='mb-0 text-white/70 flex items-baseline justify-between'>
                     <div className='flex items-center gap-2'>
-                      <span className='font-bold text-lg text-white'>{line.name}</span>
+                      <span className='font-bold text-lg text-white'>{translate(line.name)}</span>
                       {line.required && (
                         <span className='w-1.5 h-1.5 rounded-full bg-accent-chili shadow-[0_0_8px_rgba(239,68,68,0.5)]' />
                       )}
@@ -445,7 +451,7 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                         if ((line.max_item || 1) > 1) {
                           return `${totalSelected}/${line.max_item} picked`
                         }
-                        return totalSelected > 0 ? 'Selected' : 'Required'
+                        return totalSelected > 0 ? t('selected') || 'Selected' : t('required') || 'Required'
                       })()}
                     </div>
                   </Label>
@@ -552,7 +558,7 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                                     ? `data:image/png;base64,${prod.image_256}`
                                     : '/images/placeholder-food.jpg'
                                 }
-                                alt={prod.name}
+                                alt={translate(prod.name)}
                                 fill
                                 className={cn(
                                   'object-cover transition-all duration-700 group-hover:scale-110',
@@ -584,7 +590,7 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                                 'text-[11px] font-bold line-clamp-2 leading-tight transition-colors',
                                 isSelected ? 'text-accent-gold' : 'text-white/80'
                               )}>
-                                {prod.name}
+                                {translate(prod.name)}
                               </h4>
 
                               {max > 1 && isSelected && (
@@ -611,12 +617,12 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                         <div key={`attr-${selectedPid}`} className='p-6 bg-neutral-900/50 rounded-3xl border border-white/5 space-y-6 animate-in slide-in-from-top-4 duration-500 shadow-2xl'>
                           <div className="flex items-center gap-3 mb-4">
                             <div className="w-1 h-3 rounded-full bg-accent-gold" />
-                            <span className="text-xs font-black text-white uppercase tracking-widest">Options for {selectedProd.name}</span>
+                            <span className="text-xs font-black text-white uppercase tracking-widest">{t('optionsFor', { name: translate(selectedProd.name) })}</span>
                           </div>
                           {selectedProd.attributes.map((attr: ProductAttribute) => (
                             <div key={attr.id} className='space-y-3'>
                               <Label className='text-white/40 text-[9px] uppercase tracking-widest font-bold flex items-center gap-3'>
-                                {attr.name}
+                                {translate(attr.name)}
                               </Label>
                               <div className='flex flex-wrap gap-2'>
                                 {attr.values?.map((val) => {
@@ -639,7 +645,7 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                                           : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'
                                       )}
                                     >
-                                      {val.name}
+                                      {translate(val.name)}
                                       {val.price_extra ? <span className="ml-1 opacity-70">+{formatPrice(val.price_extra)}</span> : ''}
                                     </button>
                                   )
@@ -662,12 +668,12 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                         <div key={`nested-${selectedPid}`} className='p-6 bg-neutral-900/50 rounded-3xl border border-white/5 space-y-8 animate-in slide-in-from-top-4 duration-500 shadow-2xl'>
                           <div className="flex items-center gap-3 mb-4">
                             <div className="w-1 h-3 rounded-full bg-accent-gold" />
-                            <span className="text-xs font-black text-white uppercase tracking-widest">Customizations for {selectedProd.name}</span>
+                            <span className="text-xs font-black text-white uppercase tracking-widest">{t('customizationsFor') || 'Customizations for'} {translate(selectedProd.name)}</span>
                           </div>
                           {selectedProd.combo_lines.map(subLine => (
                             <div key={subLine.id} className='space-y-4'>
                               <Label className='text-white/40 text-[9px] uppercase tracking-widest font-bold flex items-center justify-between'>
-                                <span>{subLine.name} {subLine.required && <span className='text-accent-chili'>*</span>}</span>
+                                <span>{translate(subLine.name)} {subLine.required && <span className='text-accent-chili'>*</span>}</span>
                               </Label>
                               <div className='flex flex-wrap gap-2'>
                                 {subLine.products?.map(subProd => {
@@ -689,7 +695,7 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                                           : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'
                                       )}
                                     >
-                                      {subProd.name}
+                                      {translate(subProd.name)}
                                       {subProd.extra_price ? <span className="ml-1 opacity-70">+{formatPrice(subProd.extra_price)}</span> : ''}
                                     </button>
                                   )
@@ -709,11 +715,11 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                 htmlFor='product-special-requests'
                 className='text-white/70'
               >
-                Special Requests
+                {t('specialRequests') || 'Special Requests'}
               </Label>
               <textarea
                 id='product-special-requests'
-                placeholder='e.g. Allergies, less oil, extra spicy...'
+                placeholder={t('specialRequestsPlaceholder') || 'e.g. Allergies, less oil, extra spicy...'}
                 className='w-full bg-neutral-950 border border-white/10 rounded-2xl p-4 text-sm text-white focus:outline-none focus:border-accent-gold transition-colors min-h-25'
                 value={configInstructions}
                 onChange={(e) => setConfigInstructions(e.target.value)}
@@ -725,7 +731,7 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
           <div className='p-6 md:p-10 pt-6 border-t border-white/5 flex flex-col md:flex-row items-center justify-between gap-6 bg-neutral-900/90 backdrop-blur-md sticky bottom-0 left-0 w-full z-10 shrink-0'>
             <div className='text-center md:text-left'>
               <p className='text-[10px] text-white/70 uppercase tracking-widest font-bold'>
-                Item Total
+                {t('itemTotal') || 'Item Total'}
               </p>
               <p className='text-4xl font-display font-bold text-accent-gold'>
                 {formatPrice(currentConfigPrice)}
@@ -737,7 +743,7 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                 onClick={onClose}
                 className='hidden md:flex'
               >
-                Cancel
+                {commonT('cancel')}
               </Button>
               <Button
                 variant='secondary'
@@ -749,10 +755,10 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                   }`}
               >
                 {!session.isOpen
-                  ? 'Store Closed'
+                  ? cartT('closed')
                   : !isConfigValid
-                    ? 'Please Complete Selection'
-                    : 'Add to Bag'}
+                    ? t('completeSelection') || 'Please Complete Selection'
+                    : t('addToCart') || 'Add to Bag'}
               </Button>
             </div>
           </div>
