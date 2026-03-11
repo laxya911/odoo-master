@@ -2,25 +2,38 @@
 
 import React from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
+import { cn } from '@/lib/utils'
 
-export const ProductSkeleton = () => {
+interface ProductSkeletonProps {
+    className?: string
+}
+
+export const ProductSkeleton = ({ className }: ProductSkeletonProps) => {
     return (
-        <div className="bg-neutral-900/40 rounded-[32px] border border-white/5 overflow-hidden flex flex-col h-[400px] md:h-[480px]">
-            <div className="relative h-48 md:h-64 overflow-hidden">
+        <div className={cn(
+            "bg-neutral-900/40 rounded-[2rem] border border-white/5 overflow-hidden flex flex-col h-full",
+            className
+        )}>
+            {/* Image Area */}
+            <div className="relative h-64 overflow-hidden bg-neutral-800">
                 <Skeleton className="w-full h-full bg-neutral-800" />
             </div>
-            <div className="p-6 md:p-8 flex flex-col flex-grow space-y-4">
-                <div className="flex justify-between items-start">
-                    <Skeleton className="h-7 w-2/3 bg-neutral-800 rounded-lg" />
-                    <Skeleton className="h-7 w-1/4 bg-neutral-800 rounded-lg" />
+            
+            {/* Content Area */}
+            <div className="p-6 flex flex-col flex-grow space-y-4">
+                <div className="flex justify-between items-start gap-2">
+                    <Skeleton className="h-6 w-2/3 bg-white/5 rounded-lg" />
+                    <Skeleton className="h-6 w-1/4 bg-white/5 rounded-lg" />
                 </div>
+                
                 <div className="space-y-2">
-                    <Skeleton className="h-4 w-full bg-neutral-800 rounded-md" />
-                    <Skeleton className="h-4 w-4/5 bg-neutral-800 rounded-md" />
+                    <Skeleton className="h-4 w-full bg-white/5 rounded-md opacity-60" />
+                    <Skeleton className="h-4 w-3/4 bg-white/5 rounded-md opacity-60" />
                 </div>
-                <div className="mt-auto flex gap-2">
-                    <Skeleton className="h-10 flex-grow bg-neutral-800 rounded-2xl" />
-                    <Skeleton className="h-10 w-1/3 bg-neutral-800 rounded-2xl" />
+                
+                <div className="mt-auto flex gap-3 pt-4">
+                    <Skeleton className="h-12 flex-grow bg-white/5 rounded-2xl" />
+                    <Skeleton className="h-12 w-12 bg-white/5 rounded-full shrink-0" />
                 </div>
             </div>
         </div>

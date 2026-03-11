@@ -77,7 +77,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             <Button
               variant='outline'
               size='sm'
-              className='grow rounded-2xl border-white/10 group-hover:bg-accent-gold group-hover:text-primary transition-all'
+              className='grow rounded-2xl border-white/10 group-hover:bg-accent-gold group-hover:text-primary transition-all w-2/4'
               disabled={!isPosOpen}
               onClick={(e) => {
                 e.stopPropagation()
@@ -88,7 +88,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             </Button>
             <Link
               href={`/menu/${generateSlug(product.name)}`}
-              className='w-1/3'
+              className='w-2/4'
               onClick={(e) => e.stopPropagation()}
             >
               <Button

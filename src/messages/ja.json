@@ -58,7 +58,10 @@
         "creating": "アカウント作成中...",
         "passwordMismatch": "パスワードが一致しません",
         "loginFailed": "ログインに失敗しました",
-        "signupFailed": "サインアップに失敗しました"
+        "signupFailed": "サインアップに失敗しました",
+        "alreadyLoggedIn": "すでにログインしています",
+        "loginSuccess": "ログインに成功しました",
+        "signupSuccess": "アカウントが正常に作成されました"
     },
     "profile": {
         "title": "プロフィール",

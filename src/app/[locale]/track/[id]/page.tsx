@@ -66,16 +66,6 @@ export default function DynamicTrackOrderPage() {
         if (params.id) fetchOrder();
     }, [params.id]);
 
-    if (loading) {
-        return (
-            <div className="min-h-screen flex items-center justify-center">
-                <div className="flex flex-col items-center gap-4">
-                    <div className="w-12 h-12 border-4 border-accent-gold border-t-transparent rounded-full animate-spin" />
-                    <p className="font-bold text-neutral-400 animate-pulse">{t('status')}...</p>
-                </div>
-            </div>
-        );
-    }
 
     if (error || !order) {
         return (

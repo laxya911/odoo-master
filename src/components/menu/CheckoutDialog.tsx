@@ -246,17 +246,20 @@ export const CheckoutDialog = memo(
           <DialogTitle className='sr-only'>{t('title')}</DialogTitle>
 
           {currentStep === 'success' ? (
-            <div className='flex flex-col items-center justify-center p-12 text-center space-y-8'>
-              <div className='w-24 h-24 rounded-full bg-accent-gold/10 flex items-center justify-center text-accent-gold shadow-inner border border-accent-gold/20'>
-                <CheckCircle2 size={48} className='animate-bounce' />
+            <div className='flex flex-col items-center justify-center p-12 text-center space-y-8 bg-neutral-950 text-white min-h-[500px]'>
+              <div className='w-24 h-24 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500 shadow-inner border border-amber-500/20'>
+                <CheckCircle2 size={48} className='animate-pulse' />
               </div>
-              <div className='space-y-2'>
-                <h2 className='text-3xl font-serif font-bold text-neutral-900'>{t('success')}</h2>
-                <p className='text-neutral-700 max-w-sm'>{t('successDesc')}</p>
-                <div className='flex flex-col items-center gap-2 mt-4'>
-                  <Badge variant='secondary' className='bg-amber-100 text-amber-900 border border-amber-200 px-4 py-1 rounded-full uppercase text-xs tracking-widest font-bold'>
-                    {t('receipt')}: {placedOrderRef || placedOrderId || 'Pending'}
-                  </Badge>
+              <div className='space-y-4'>
+                <h2 className='text-4xl font-serif font-bold text-white tracking-tight'>{t('success')}</h2>
+                <p className='text-neutral-300 max-w-sm mx-auto text-lg leading-relaxed'>{t('successDesc')}</p>
+                <div className='flex flex-col items-center gap-2 mt-6'>
+                  <div className='bg-neutral-900 border border-neutral-800 px-6 py-2 rounded-2xl'>
+                    <span className='text-[10px] text-neutral-500 font-bold uppercase tracking-[0.2em] block mb-1'>{t('receipt')}</span>
+                    <span className='text-amber-500 font-mono font-bold text-lg'>
+                      {placedOrderRef || placedOrderId || '...'}
+                    </span>
+                  </div>
                 </div>
               </div>
               <div className='grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-md pt-4'>

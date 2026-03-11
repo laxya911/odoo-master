@@ -13,7 +13,7 @@ export type OdooRecord = {
 export interface ProductAttribute {
   id: number
   name: string
-  display_type?: 'radio' | 'select' | 'color' | 'checkbox'
+  display_type?: 'radio' | 'select' | 'color' | 'checkbox' | 'multi' | 'multi_checkbox'
   values: Array<{
     id: number
     name: string
@@ -107,7 +107,9 @@ export type OrderLineItem = {
   combo_id?: number
   combo_item_id?: number
   attribute_value_ids?: number[]
+  price_extra?: number
 }
+
 
 export interface Paginated<T> {
   data: T[]
