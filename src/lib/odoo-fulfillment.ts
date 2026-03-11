@@ -286,7 +286,9 @@ export async function fulfillOdooOrder(
           line.attribute_value_ids && line.attribute_value_ids.length > 0
             ? [[6, 0, line.attribute_value_ids]]
             : [],
+        price_extra: line.price_extra || 0,
       }
+
 
       console.log(`[Fulfillment] Line ${index} (${line.product_id}): qty=${vals.qty}, price_unit=${vals.price_unit}, incl=${vals.price_subtotal_incl}`)
       return [0, 0, vals]

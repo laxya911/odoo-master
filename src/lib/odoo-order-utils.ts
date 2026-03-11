@@ -84,7 +84,8 @@ export async function calculateOrderTotal(orderLines: OrderLineItem[]) {
 
     // Odoo's list_price is the price excluding tax if tax is excluded, 
     // and price including tax if tax is included.
-    const priceUnit = item.list_price ?? pData.list_price
+    const priceUnit = (item.list_price ?? pData.list_price) + (item.price_extra || 0)
+
     
     // 1. Identify included taxes to get the "extra" base price
     let totalIncludedRate = 0
@@ -212,6 +213,17 @@ export function expandCartItems(cartItems: CartItem[]): OrderLineItem[] {
       subItemTotalExtra = childLines.reduce((sum, cl) => sum + (cl.list_price || 0), 0)
     }
 
+    // 1. Calculate attribute extra price
+    let attributeExtraPrice = 0
+    if (item.meta?.attribute_value_ids) {
+      item.meta.attribute_value_ids.forEach(vid => {
+        item.product.attributes?.forEach(attr => {
+          const val = attr.values.find(v => v.id === vid)
+          if (val) attributeExtraPrice += (val.price_extra || 0)
+        })
+      })
+    }
+
     // 2. Add Parent Line. The parent's list_price is fixed (e.g. 2000).
     const basePrice = item.product.list_price || 0
     
@@ -223,8 +235,10 @@ export function expandCartItems(cartItems: CartItem[]): OrderLineItem[] {
       quantity: item.quantity,
       list_price: 0, 
       attribute_value_ids: item.meta?.attribute_value_ids,
+      price_extra: attributeExtraPrice,
       customer_note: item.notes || item.meta?.notes || '',
     })
+
 
     // 3. Add Child Lines and shift price
     if (childLines.length > 0) {

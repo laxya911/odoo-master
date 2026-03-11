@@ -399,7 +399,8 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                                 // Odoo display_type: 'radio', 'select', 'color'
                                 const display_type =
                                   attr.display_type || 'radio'
-                                const isSingle = display_type !== 'checkbox' // Assuming checkbox for multi, others single
+                                const isSingle = !['checkbox', 'multi', 'multi_checkbox'].includes(display_type)
+
 
                                 if (isSingle)
                                   return { ...prev, [attr.id]: [val.id] }
