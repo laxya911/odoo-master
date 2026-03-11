@@ -18,9 +18,9 @@ export async function POST(request: Request) {
     // or search and then verify if we had a way.
     // FOR THIS DEMO: We will find the user by email. 
     // In a real Odoo setup with this custom JSON API, there might be an 'authenticate' endpoint.
-    const users = await odooCall<Array<{ id: number; name: string; login: string }>>('res.users', 'search_read', {
+    const users = await odooCall<Array<{ id: number; name: string; login: string; partner_id: [number, string] }>>('res.users', 'search_read', {
       domain: [['login', '=', email]],
-      fields: ['id', 'name', 'login'],
+      fields: ['id', 'name', 'login', 'partner_id'],
       limit: 1,
     });
 
@@ -29,14 +29,45 @@ export async function POST(request: Request) {
     }
 
     const userRecord = users[0];
+    const partnerId = userRecord.partner_id[0];
+
+    // Fetch full partner details for the user
+    const partners = await odooCall<Array<{ 
+      image_1920?: string; 
+      phone?: string; 
+      street?: string; 
+      city?: string; 
+      zip?: string 
+    }>>('res.partner', 'read', {
+      ids: [partnerId],
+      fields: ['image_1920', 'phone', 'street', 'city', 'zip'],
+    });
+
+    const partner = partners[0] || {};
     
     // TODO: Implement actual password verification logic if the Odoo API supports it.
     // For now, we proceed if user is found (DEMO PURPOSE).
     // WARNING: In production, you must verify the password!
 
-    const user = { id: userRecord.id, name: userRecord.name, email: userRecord.login };
+    // ONLY include essential fields in the session cookie to keep it small (4KB limit)
+    const sessionPayload = { 
+      id: userRecord.id, 
+      name: userRecord.name, 
+      email: userRecord.login 
+    };
 
-    const session = await encrypt(user);
+    const user = { 
+      id: userRecord.id, 
+      name: userRecord.name, 
+      email: userRecord.login,
+      image_1920: partner.image_1920,
+      phone: partner.phone,
+      street: partner.street,
+      city: partner.city,
+      zip: partner.zip,
+    };
+
+    const session = await encrypt(sessionPayload);
 
     const response = NextResponse.json({
       message: 'Login successful',

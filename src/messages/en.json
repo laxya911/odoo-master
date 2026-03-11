@@ -58,7 +58,10 @@
         "creating": "Creating Account...",
         "passwordMismatch": "Passwords do not match",
         "loginFailed": "Login failed",
-        "signupFailed": "Signup failed"
+        "signupFailed": "Signup failed",
+        "alreadyLoggedIn": "You are already logged in",
+        "loginSuccess": "Logged in successfully",
+        "signupSuccess": "Account created successfully"
     },
     "profile": {
         "title": "My Profile",

@@ -7,11 +7,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Utensils, Github, Mail, AlertCircle, Loader2 } from 'lucide-react';
+import { Utensils, Github, Mail, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useTranslations } from 'next-intl';
+import { toast } from 'sonner';
+import { AuthSkeleton } from '@/components/auth/AuthSkeleton';
 
 const GoogleIcon = ({ className }: { className?: string }) => (
     <svg className={className} viewBox="0 0 24 24">
@@ -35,15 +37,33 @@ const GoogleIcon = ({ className }: { className?: string }) => (
 );
 
 function AuthPageContent() {
-    const { login, signup } = useAuth();
+    const { login, signup, isAuthenticated, isLoading: authLoading } = useAuth();
     const router = useRouter();
     const searchParams = useSearchParams();
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [hasCheckedInitialAuth, setHasCheckedInitialAuth] = useState(false);
+    const [isInitialAuth, setIsInitialAuth] = useState(false);
 
     const callbackUrl = searchParams.get('callbackUrl') || '/profile';
     const errorParam = searchParams.get('error');
     const t = useTranslations('auth');
+
+    useEffect(() => {
+        if (!authLoading && !hasCheckedInitialAuth) {
+            if (isAuthenticated) {
+                setIsInitialAuth(true);
+            }
+            setHasCheckedInitialAuth(true);
+        }
+    }, [authLoading, isAuthenticated, hasCheckedInitialAuth]);
+
+    useEffect(() => {
+        if (hasCheckedInitialAuth && isInitialAuth && isAuthenticated && !authLoading) {
+            toast.info(t('alreadyLoggedIn') || 'Already logged in');
+            router.replace(callbackUrl);
+        }
+    }, [hasCheckedInitialAuth, isInitialAuth, isAuthenticated, authLoading, router, callbackUrl, t]);
 
     useEffect(() => {
         if (errorParam) {
@@ -67,7 +87,16 @@ function AuthPageContent() {
         setError(null);
         try {
             await login(loginEmail, loginPassword);
-            router.push(callbackUrl);
+            toast.success(t('loginSuccess'));
+            setIsInitialAuth(false);
+            
+            // Set authenticating to false slightly before redirect to show clean state
+            setIsLoading(false);
+            
+            // Force a slight delay to ensure AuthContext state is propagated
+            setTimeout(() => {
+                router.push('/profile');
+            }, 100);
         } catch (err: unknown) {
             const error = err as Error;
             setError(error.message || t('loginFailed'));
@@ -79,14 +108,22 @@ function AuthPageContent() {
         e.preventDefault();
         if (regPassword !== confirmPassword) {
             setError(t('passwordMismatch'));
-            setIsLoading(false);
             return;
         }
         setIsLoading(true);
         setError(null);
         try {
             await signup(regName, regEmail, regPassword);
-            router.push(callbackUrl);
+            toast.success(t('signupSuccess'));
+            setIsInitialAuth(false);
+
+            // Set authenticating to false slightly before redirect to show clean state
+            setIsLoading(false);
+
+            // Force a slight delay to ensure AuthContext state is propagated
+            setTimeout(() => {
+                router.push('/profile');
+            }, 100);
         } catch (err: unknown) {
             const error = err as Error;
             setError(error.message || t('signupFailed'));
@@ -97,6 +134,11 @@ function AuthPageContent() {
     const handleGoogleLogin = () => {
         window.location.href = '/api/auth/google/login';
     };
+
+    // Only show skeleton during the INITIAL session check OR if we landed already logged in
+    if (authLoading || (isAuthenticated && isInitialAuth)) {
+        return <AuthSkeleton />;
+    }
 
     return (
         <div className="min-h-[80vh] flex items-center justify-center p-4 py-20">
@@ -255,11 +297,7 @@ function AuthPageContent() {
 
 export default function AuthPage() {
     return (
-        <Suspense fallback={
-            <div className="min-h-[80vh] flex items-center justify-center">
-                <Loader2 className="w-10 h-10 animate-spin text-accent-gold" />
-            </div>
-        }>
+        <Suspense fallback={<AuthSkeleton />}>
             <AuthPageContent />
         </Suspense>
     );

@@ -41,7 +41,7 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
   const { locale, slug } = await params;
   const t = await getTranslations({ locale, namespace: 'menu' });
   const tDynamic = await getTranslations({ locale, namespace: 'dynamic' });
-  
+
   const translate = (key: string | undefined): string => {
     if (!key) return '';
     const sanitizedKey = key.replace(/\./g, '_');
@@ -105,10 +105,18 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
   const details = await getProductDetails(product.id);
   const fullProduct = { ...product, ...details };
 
-  // Get related items (same category or random)
+  // Get related items (same category)
   const relatedItems = products
-    .filter(p => p.id !== product.id)
-    .slice(0, 3);
+    .filter(p => p.id !== product.id && p.category === product.category)
+    .slice(0, 4);
+
+  // Fallback to any products if not enough in same category
+  if (relatedItems.length < 4) {
+    const additionalItems = products
+      .filter(p => p.id !== product.id && !relatedItems.find(r => r.id === p.id))
+      .slice(0, 4 - relatedItems.length);
+    relatedItems.push(...additionalItems);
+  }
 
   return (
     <div className="bg-neutral-950">

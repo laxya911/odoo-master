@@ -55,8 +55,24 @@ export async function POST(request: Request) {
     const userId = userIds[0];
 
     // 4. Create session
-    const user = { id: userId, name: name, email: email };
-    const session = await encrypt(user);
+    // ONLY include essential fields in the session cookie to keep it small (4KB limit)
+    const sessionPayload = { 
+      id: userId, 
+      name: name, 
+      email: email 
+    };
+
+    const user = { 
+      id: userId, 
+      name: name, 
+      email: email,
+      phone: '',
+      street: '',
+      city: '',
+      zip: '',
+    };
+
+    const session = await encrypt(sessionPayload);
 
     const response = NextResponse.json({
       message: 'User created successfully',
