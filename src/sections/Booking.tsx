@@ -8,12 +8,23 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useTranslations } from 'next-intl';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 interface BookingProps {
   onNavigateHome?: () => void;
 }
 
+const EVENT_TYPES = ['Birthday', 'Anniversary', 'Corporate', 'Family', 'Other'] as const;
+
 export const Booking: React.FC<BookingProps> = ({ onNavigateHome }) => {
+  const t = useTranslations('booking');
   const searchParams = useSearchParams();
   const initialTab = searchParams.get('tab') === 'party' ? 'party' : 'table';
   const [activeTab, setActiveTab] = useState<'table' | 'party'>(initialTab);
@@ -51,7 +62,7 @@ export const Booking: React.FC<BookingProps> = ({ onNavigateHome }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
 
-  const selectedStore = stores.find(s => s.id === formData.branch) || stores[0];
+  const selectedStore = stores.find(s => s.id === formData.branch) || (stores.length > 0 ? stores[0] : null);
   const today = new Date().toISOString().split('T')[0];
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -61,8 +72,6 @@ export const Booking: React.FC<BookingProps> = ({ onNavigateHome }) => {
       if (activeTab === 'table') {
         await odoo.createReservation(formData);
       } else {
-        // Assume odoo client has a createPartyBooking method or handle differently
-        // For now, let's use the same reservation method with eventType in instructions if needed
         await odoo.createReservation({
           ...formData,
           instructions: `[PARTY: ${formData.eventType}] ${formData.instructions} (Budget: ${formData.budget})`
@@ -95,17 +104,20 @@ export const Booking: React.FC<BookingProps> = ({ onNavigateHome }) => {
             </svg>
           </div>
           <h2 className="text-3xl font-display font-bold mb-4 text-white">
-            {activeTab === 'table' ? 'Table Reserved' : 'Party Inquiry Sent'}
+            {activeTab === 'table' ? t('successTitle') : t('partySuccessTitle')}
           </h2>
           <p className="text-white/60 mb-10 font-light italic leading-relaxed">
-            Namaste! Your {activeTab === 'table' ? 'reservation' : 'party inquiry'} at {selectedStore?.name || 'our branch'} has been synchronized with our Odoo system. We look forward to serving you.
+            {t('successMessage', {
+              type: activeTab === 'table' ? t('reservation') : t('partyInquiry'),
+              branch: selectedStore?.name || 'our branch'
+            })}
           </p>
           <Button
             variant="secondary"
             className="w-full sm:w-auto px-12"
             onClick={handleReturnHome}
           >
-            Return to Home
+            {t('returnHome')}
           </Button>
         </motion.div>
       </div>
@@ -120,27 +132,25 @@ export const Booking: React.FC<BookingProps> = ({ onNavigateHome }) => {
             <header className="mb-12">
               <div className="flex items-center gap-4 mb-4">
                 <div className="w-8 h-px bg-accent-gold" />
-                <h3 className="text-accent-gold uppercase tracking-[0.3em] text-sm font-bold">Reservations</h3>
+                <h3 className="text-accent-gold uppercase tracking-[0.3em] text-sm font-bold">{t('title')}</h3>
               </div>
               <h1 className="text-5xl md:text-6xl font-display font-bold mb-8 text-white">
-                {activeTab === 'table' ? 'Join Us' : 'Host a Party'}
+                {activeTab === 'table' ? t('subtitle') : t('partySubtitle')}
               </h1>
               <p className="text-white/70 text-lg italic leading-relaxed max-w-md">
-                {activeTab === 'table'
-                  ? 'Experience premium Himalayan dining. Our table management is powered by seamless real-time synchronization.'
-                  : 'Celebrate your special moments with us. From birthdays to anniversaries, we craft unforgettable experiences for your groups.'}
+                {activeTab === 'table' ? t('desc') : t('partyDesc')}
               </p>
             </header>
             {selectedStore && (
               <Card className="max-w-md">
-                <CardHeader><Label>Operational Hours</Label></CardHeader>
+                <CardHeader><Label>{t('hoursTitle')}</Label></CardHeader>
                 <CardContent>
                   <div className="flex justify-between py-3 border-b border-white/5">
-                    <span className="text-white/40 text-sm">Lunch Service</span>
+                    <span className="text-white/40 text-sm">{t('lunch')}</span>
                     <span className="text-accent-gold font-bold">{selectedStore?.hours.lunch}</span>
                   </div>
                   <div className="flex justify-between py-3">
-                    <span className="text-white/40 text-sm">Dinner Service</span>
+                    <span className="text-white/40 text-sm">{t('dinner')}</span>
                     <span className="text-accent-gold font-bold">{selectedStore?.hours.dinner}</span>
                   </div>
                 </CardContent>
@@ -152,38 +162,39 @@ export const Booking: React.FC<BookingProps> = ({ onNavigateHome }) => {
             {/* Tab Switcher */}
             <div className="flex gap-4 mb-10 bg-white/5 p-1 rounded-2xl border border-white/5">
               <button
+                type="button"
                 onClick={() => setActiveTab('table')}
                 className={`flex-1 py-3 rounded-xl text-[10px] uppercase tracking-widest font-bold transition-all ${activeTab === 'table' ? 'bg-accent-gold text-primary shadow-lg' : 'text-white/70 hover:text-white/90 cursor-pointer'}`}
               >
-                Table Reservation
+                {t('tableTab')}
               </button>
               <button
+                type="button"
                 onClick={() => setActiveTab('party')}
                 className={`flex-1 py-3 rounded-xl text-[10px] uppercase tracking-widest font-bold transition-all ${activeTab === 'party' ? 'bg-accent-gold text-primary shadow-lg' : 'text-white/70 hover:text-white/90 cursor-pointer'}`}
               >
-                Book a Party
+                {t('partyTab')}
               </button>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label htmlFor="booking-branch">Branch Selection</Label>
+                  <Label htmlFor="booking-branch">{t('branchLabel')}</Label>
                   <select
                     id="booking-branch"
                     name="branch"
                     value={formData.branch}
                     onChange={handleChange}
                     required
-                    aria-label="Select restaurant branch location"
-                    className="w-full input-dark appearance-none bg-neutral-900/50 border-white/10"
+                    className="w-full bg-neutral-900/50 border border-white/10 rounded-xl p-3 text-white focus:outline-none focus:border-accent-gold"
                   >
-                    <option value="" disabled className="bg-neutral-900">Choose a location</option>
+                    <option value="" disabled className="bg-neutral-900">{t('branchPlaceholder')}</option>
                     {stores.map(s => <option key={s.id} value={s.id} className="bg-neutral-900">{s.name}</option>)}
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <Label>{activeTab === 'table' ? 'Number of Guests' : 'Approx. Guests'}</Label>
+                  <Label>{activeTab === 'table' ? t('guestsLabel') : t('partyGuestsLabel')}</Label>
                   <Input
                     type="number"
                     name="guests"
@@ -198,26 +209,30 @@ export const Booking: React.FC<BookingProps> = ({ onNavigateHome }) => {
               {activeTab === 'party' && (
                 <div className="grid md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-top-2">
                   <div className="space-y-2">
-                    <Label htmlFor="booking-event-type">Event Type</Label>
-                    <select
-                      id="booking-event-type"
-                      name="eventType"
+                    <Label htmlFor="booking-event-type">{t('eventTypeLabel')}</Label>
+                    <Select
                       value={formData.eventType}
-                      onChange={handleChange}
-                      aria-label="Select type of event for party booking"
-                      className="w-full input-dark appearance-none bg-neutral-900/50 border-white/10"
+                      onValueChange={(value) => setFormData({ ...formData, eventType: value })}
                     >
-                      <option value="Birthday" className="bg-neutral-900">Birthday</option>
-                      <option value="Anniversary" className="bg-neutral-900">Anniversary</option>
-                      <option value="Corporate" className="bg-neutral-900">Corporate Event</option>
-                      <option value="Family" className="bg-neutral-900">Family Gathering</option>
-                      <option value="Other" className="bg-neutral-900">Other Special Occasion</option>
-                    </select>
+                      <SelectTrigger
+                        id="booking-event-type"
+                        className="w-full bg-neutral-900/50 border-white/10"
+                      >
+                        <SelectValue placeholder={t('eventTypePlaceholder')} />
+                      </SelectTrigger>
+                      <SelectContent className="bg-neutral-900 border-white/10 text-white">
+                        {EVENT_TYPES.map(type => (
+                          <SelectItem key={type} value={type}>
+                            {t(`eventTypes.${type}`)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Estimated Budget</Label>
+                    <Label>{t('budgetLabel')}</Label>
                     <Input
-                      placeholder="e.g. 3000/person"
+                      placeholder={t('budgetPlaceholder')}
                       name="budget"
                       value={formData.budget}
                       onChange={handleChange}
@@ -228,40 +243,39 @@ export const Booking: React.FC<BookingProps> = ({ onNavigateHome }) => {
 
               <div className="grid md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-top-2">
                 <div className="space-y-2">
-                  <Label>Preferred Date</Label>
+                  <Label>{t('dateLabel')}</Label>
                   <Input type="date" name="date" min={today} value={formData.date} onChange={handleChange} required />
                 </div>
                 <div className="space-y-2">
-                  <Label>Preferred Time</Label>
+                  <Label>{t('timeLabel')}</Label>
                   <Input type="time" name="time" value={formData.time} onChange={handleChange} required />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label>Full Name</Label>
-                <Input required name="name" placeholder="Enter your full name" value={formData.name} onChange={handleChange} />
+                <Label>{t('nameLabel')}</Label>
+                <Input required name="name" placeholder={t('namePlaceholder')} value={formData.name} onChange={handleChange} />
               </div>
 
               <div className="grid md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-top-2">
                 <div className="space-y-2">
-                  <Label>Email Address</Label>
+                  <Label>{t('emailLabel')}</Label>
                   <Input required type="email" name="email" placeholder="email@example.com" value={formData.email} onChange={handleChange} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Phone Number</Label>
+                  <Label>{t('phoneLabel')}</Label>
                   <Input required type="tel" name="phone" placeholder="0x0-xxxx-xxxx" value={formData.phone} onChange={handleChange} />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="booking-instructions">{activeTab === 'table' ? 'Special Instructions' : 'Event Details & Special Requests'}</Label>
+                <Label htmlFor="booking-instructions">{activeTab === 'table' ? t('instructionsLabel') : t('partyInstructionsLabel')}</Label>
                 <textarea
                   id="booking-instructions"
                   name="instructions"
                   value={formData.instructions}
                   onChange={handleChange}
-                  placeholder={activeTab === 'table' ? "Allergies, seating preference, etc." : "Tell us more about your event..."}
-                  aria-label={activeTab === 'table' ? 'Special instructions for your reservation' : 'Event details and special requests for your party'}
+                  placeholder={activeTab === 'table' ? t('instructionsPlaceholder') : t('partyInstructionsPlaceholder')}
                   className="w-full bg-neutral-900/50 border border-white/10 rounded-2xl p-4 text-sm text-white focus:outline-none focus:border-accent-gold transition-colors min-h-[100px]"
                 />
               </div>
@@ -272,11 +286,8 @@ export const Booking: React.FC<BookingProps> = ({ onNavigateHome }) => {
                   className="w-full py-6 rounded-2xl bg-accent-gold  font-bold tracking-widest uppercase hover:scale-105 transition-transform shadow-xl shadow-accent-gold/20"
                   disabled={isLoading || storesLoading}
                 >
-                  {isLoading ? 'Processing Request...' : activeTab === 'table' ? 'Confirm Table Reservation' : 'Send Party Inquiry'}
+                  {isLoading ? t('processing') : activeTab === 'table' ? t('submitTable') : t('submitParty')}
                 </Button>
-                {/* <p className="text-center text-[10px] text-white/20 mt-4 uppercase tracking-[0.2em]">
-                  Instant sync with Odoo POS System
-                </p> */}
               </div>
             </form>
           </div>
@@ -285,3 +296,4 @@ export const Booking: React.FC<BookingProps> = ({ onNavigateHome }) => {
     </div>
   );
 };
+

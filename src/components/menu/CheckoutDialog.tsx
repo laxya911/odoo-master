@@ -17,6 +17,7 @@ import { Elements } from '@stripe/react-stripe-js'
 import { CheckoutFormInner } from './CheckoutFormInner'
 import { usePaymentConfig } from '@/context/PaymentConfigContext'
 import { useSession } from '@/context/SessionContext'
+import { useTranslations } from 'next-intl'
 
 const checkoutSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters.' }),
@@ -53,6 +54,8 @@ export const CheckoutDialog = memo(
     subtotal,
     totalTax,
   }: CheckoutDialogProps) => {
+    const t = useTranslations('checkout');
+    const cartT = useTranslations('cart');
     const [currentStep, setCurrentStep] = useState<CheckoutStep>('personal')
     const [placedOrderId, setPlacedOrderId] = useState<number | null>(null)
     const [placedOrderRef, setPlacedOrderRef] = useState<string | null>(null)
@@ -240,7 +243,7 @@ export const CheckoutDialog = memo(
     return (
       <Dialog open={isOpen} onOpenChange={handleClose}>
         <DialogContent className='max-w-2xl w-full p-0 overflow-hidden border-none shadow-2xl rounded-4xl bg-white text-neutral-900'>
-          <DialogTitle className='sr-only'>Checkout</DialogTitle>
+          <DialogTitle className='sr-only'>{t('title')}</DialogTitle>
 
           {currentStep === 'success' ? (
             <div className='flex flex-col items-center justify-center p-12 text-center space-y-8'>
@@ -248,26 +251,26 @@ export const CheckoutDialog = memo(
                 <CheckCircle2 size={48} className='animate-bounce' />
               </div>
               <div className='space-y-2'>
-                <h2 className='text-3xl font-serif font-bold text-neutral-900'>Order Successful!</h2>
-                <p className='text-neutral-700 max-w-sm'>Thank you for your order. We've received it and are preparing your culinary experience.</p>
+                <h2 className='text-3xl font-serif font-bold text-neutral-900'>{t('success')}</h2>
+                <p className='text-neutral-700 max-w-sm'>{t('successDesc')}</p>
                 <div className='flex flex-col items-center gap-2 mt-4'>
                   <Badge variant='secondary' className='bg-amber-100 text-amber-900 border border-amber-200 px-4 py-1 rounded-full uppercase text-xs tracking-widest font-bold'>
-                    Receipt: {placedOrderRef || placedOrderId || 'Pending'}
+                    {t('receipt')}: {placedOrderRef || placedOrderId || 'Pending'}
                   </Badge>
                 </div>
               </div>
               <div className='grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-md pt-4'>
                 <Button variant='outline' className='h-14 rounded-2xl border-neutral-200 bg-white text-neutral-900 font-bold hover:bg-neutral-50'
                   onClick={() => { handleClose(); const trackingId = placedOrderId || placedOrderRef; if (trackingId) router.push(`/track/${trackingId}`) }}>
-                  Track Order
+                  {t('track')}
                 </Button>
                 <Button variant='outline' className='h-14 rounded-2xl border-neutral-200 bg-white text-neutral-900 font-bold hover:bg-neutral-50'
                   onClick={() => { handleClose(); router.push('/profile') }}>
-                  View Profile
+                  {t('profile')}
                 </Button>
                 <Button className='h-14 sm:col-span-2 rounded-2xl bg-accent-gold hover:bg-amber-600 text-white font-bold text-lg shadow-lg shadow-amber-500/20'
                   onClick={handleClose}>
-                  Continue Shopping
+                  {cartT('continue')}
                 </Button>
               </div>
             </div>
@@ -277,9 +280,9 @@ export const CheckoutDialog = memo(
                 {/* Header */}
                 <div className='p-6 pb-2 bg-white z-10 border-b flex items-center justify-between'>
                   <div className='flex flex-col'>
-                    <h2 className='text-2xl font-serif font-bold text-neutral-900 tracking-tight'>Checkout</h2>
+                    <h2 className='text-2xl font-serif font-bold text-neutral-900 tracking-tight'>{t('title')}</h2>
                     <p className='text-[10px] text-neutral-400 font-bold uppercase tracking-widest'>
-                      Step {currentStep === 'personal' ? '1' : currentStep === 'details' ? '2' : '3'} of 3
+                      {t('step', { step: currentStep === 'personal' ? '1' : currentStep === 'details' ? '2' : '3' })}
                     </p>
                   </div>
                 </div>
@@ -310,28 +313,28 @@ export const CheckoutDialog = memo(
                   {configLoading ? (
                     <div className='flex flex-col items-center justify-center h-full space-y-4'>
                       <Loader2 className='w-8 h-8 animate-spin text-accent-gold' />
-                      <p className='text-neutral-500 font-medium'>Loading checkout...</p>
+                      <p className='text-neutral-500 font-medium'>{t('loading')}</p>
                     </div>
                   ) : (
                     <>
                       {currentStep === 'personal' && (
                         <div className='space-y-6 py-4'>
-                          <h3 className='text-lg font-bold text-neutral-900'>Personal Details</h3>
+                          <h3 className='text-lg font-bold text-neutral-900'>{t('personal')}</h3>
                           <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
                             <div className='space-y-2'>
-                              <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>Full Name</label>
-                              <input {...form.register('name')} placeholder='Name' className='w-full h-12 px-4 rounded-xl border border-neutral-200 focus:border-accent-gold focus:outline-none transition' />
+                              <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>{t('name')}</label>
+                              <input {...form.register('name')} placeholder={t('name')} className='w-full h-12 px-4 rounded-xl border border-neutral-200 focus:border-accent-gold focus:outline-none transition' />
                               {form.formState.errors.name && <span className='text-xs text-red-500'>{form.formState.errors.name.message}</span>}
                             </div>
                             <div className='space-y-2'>
-                              <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>Phone</label>
-                              <input {...form.register('phone')} placeholder='Phone' className='w-full h-12 px-4 rounded-xl border border-neutral-200 focus:border-accent-gold focus:outline-none transition' />
+                              <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>{t('phone')}</label>
+                              <input {...form.register('phone')} placeholder={t('phone')} className='w-full h-12 px-4 rounded-xl border border-neutral-200 focus:border-accent-gold focus:outline-none transition' />
                               {form.formState.errors.phone && <span className='text-xs text-red-500'>{form.formState.errors.phone.message}</span>}
                             </div>
                           </div>
                           <div className='space-y-2'>
-                            <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>Email Address</label>
-                            <input type='email' {...form.register('email')} placeholder='Email' className='w-full h-12 px-4 rounded-xl border border-neutral-200 focus:border-accent-gold focus:outline-none transition' />
+                            <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>{t('email')}</label>
+                            <input type='email' {...form.register('email')} placeholder={t('email')} className='w-full h-12 px-4 rounded-xl border border-neutral-200 focus:border-accent-gold focus:outline-none transition' />
                             {form.formState.errors.email && <span className='text-xs text-red-500'>{form.formState.errors.email.message}</span>}
                           </div>
                         </div>
@@ -339,9 +342,9 @@ export const CheckoutDialog = memo(
 
                       {currentStep === 'details' && (
                         <div className='space-y-6 py-4'>
-                          <h3 className='text-lg font-bold text-neutral-900'>Order Details</h3>
+                          <h3 className='text-lg font-bold text-neutral-900'>{t('order')}</h3>
                           <div className='space-y-3'>
-                            <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>Order Type</label>
+                            <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>{t('orderType')}</label>
                             <div className='grid grid-cols-3 gap-3'>
                               {['delivery', 'dine-in', 'takeout'].map((type) => (
                                 <div key={type} onClick={() => form.setValue('orderType', type as any)}
@@ -353,36 +356,36 @@ export const CheckoutDialog = memo(
                             </div>
                           </div>
                           <div className='space-y-3'>
-                            <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>Street Address</label>
-                            <input {...form.register('street')} placeholder='Street' className='w-full h-12 px-4 rounded-xl border border-neutral-200 focus:border-accent-gold focus:outline-none transition' />
+                            <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>{t('street')}</label>
+                            <input {...form.register('street')} placeholder={t('street')} className='w-full h-12 px-4 rounded-xl border border-neutral-200 focus:border-accent-gold focus:outline-none transition' />
                             {form.formState.errors.street && <span className='text-xs text-red-500'>{form.formState.errors.street.message}</span>}
                           </div>
                           <div className='grid grid-cols-2 gap-4'>
                             <div className='space-y-2'>
-                              <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>City</label>
-                              <input {...form.register('city')} placeholder='City' className='w-full h-12 px-4 rounded-xl border border-neutral-200 focus:border-accent-gold focus:outline-none transition' />
+                              <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>{t('city')}</label>
+                              <input {...form.register('city')} placeholder={t('city')} className='w-full h-12 px-4 rounded-xl border border-neutral-200 focus:border-accent-gold focus:outline-none transition' />
                               {form.formState.errors.city && <span className='text-xs text-red-500'>{form.formState.errors.city.message}</span>}
                             </div>
                             <div className='space-y-2'>
-                              <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>ZIP Code</label>
-                              <input {...form.register('zip')} placeholder='ZIP' className='w-full h-12 px-4 rounded-xl border border-neutral-200 focus:border-accent-gold focus:outline-none transition' />
+                              <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>{t('zip')}</label>
+                              <input {...form.register('zip')} placeholder={t('zip')} className='w-full h-12 px-4 rounded-xl border border-neutral-200 focus:border-accent-gold focus:outline-none transition' />
                               {form.formState.errors.zip && <span className='text-xs text-red-500'>{form.formState.errors.zip.message}</span>}
                             </div>
                           </div>
                           <div className='space-y-2'>
-                            <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>Order Notes (Optional)</label>
-                            <textarea {...form.register('notes')} placeholder='Instructions...' className='w-full px-4 py-3 rounded-2xl border border-neutral-200 focus:border-accent-gold focus:outline-none transition h-24 resize-none' />
+                            <label className='text-xs font-bold text-neutral-500 uppercase tracking-widest'>{t('notes')}</label>
+                            <textarea {...form.register('notes')} placeholder={t('placeholderNotes')} className='w-full px-4 py-3 rounded-2xl border border-neutral-200 focus:border-accent-gold focus:outline-none transition h-24 resize-none' />
                           </div>
                         </div>
                       )}
 
                       {currentStep === 'payment' && (
                         <div className='space-y-6 py-4'>
-                          <h3 className='text-lg font-bold text-neutral-900'>Payment</h3>
+                          <h3 className='text-lg font-bold text-neutral-900'>{t('payment')}</h3>
                           {creatingPaymentIntent && !clientSecret && (
                             <div className='flex flex-col items-center justify-center h-48 space-y-4'>
                               <Loader2 className='w-8 h-8 animate-spin text-accent-gold' />
-                              <p className='text-neutral-500 font-medium'>Initializing payment...</p>
+                              <p className='text-neutral-500 font-medium'>{t('initPayment')}</p>
                             </div>
                           )}
                         </div>
@@ -415,25 +418,25 @@ export const CheckoutDialog = memo(
                   <Button variant='ghost' type='button' disabled={currentStep === 'personal'}
                     onClick={() => handleStepChange(currentStep === 'details' ? 'personal' : 'details')}
                     className='h-12 flex-1 font-bold text-neutral-500 rounded-xl hover:bg-neutral-50 border border-neutral-100'>
-                    <ArrowLeft className='w-4 h-4 mr-2' /> Back
+                    <ArrowLeft className='w-4 h-4 mr-2' /> {t('back')}
                   </Button>
                   {currentStep === 'payment' ? (
                     <Button type='submit' form='checkout-form' disabled={!session?.isOpen || isProcessing}
                       className='h-12 flex-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-lg shadow-amber-500/20 text-base transition-all group'>
                       {isProcessing ? (
                         <>
-                          <Loader2 className='w-4 h-4 mr-2 animate-spin' /> Processing...
+                          <Loader2 className='w-4 h-4 mr-2 animate-spin' /> {t('processing')}
                         </>
                       ) : (
                         <>
-                          Complete & Pay <ArrowRight className='w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform' />
+                          {t('completePay')} <ArrowRight className='w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform' />
                         </>
                       )}
                     </Button>
                   ) : (
                     <Button type='button' onClick={() => handleStepChange(currentStep === 'personal' ? 'details' : 'payment')}
                       className='h-12 flex-2 bg-accent-gold hover:bg-amber-600 text-white font-bold rounded-xl shadow-lg shadow-amber-500/20 text-base transition-all'>
-                      {currentStep === 'details' ? 'Proceed to Payment' : 'Continue'} <ArrowRight className='w-4 h-4 ml-2' />
+                      {currentStep === 'details' ? t('proceedPayment') : t('continue')} <ArrowRight className='w-4 h-4 ml-2' />
                     </Button>
                   )}
                 </div>

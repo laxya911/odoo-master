@@ -36,7 +36,34 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<Error | null>(null)
 
-    const fetchProducts = async () => {
+    const fetchProducts = async (forceRefresh = false) => {
+        const CACHE_KEY = 'odoo_products_cache'
+        const CACHE_TIME = 15 * 60 * 1000 // 15 minutes
+
+        if (!forceRefresh) {
+            const cached = localStorage.getItem(CACHE_KEY)
+            if (cached) {
+                try {
+                    const { data, timestamp } = JSON.parse(cached)
+                    if (Date.now() - timestamp < CACHE_TIME) {
+                        console.log('[ProductContext] Using cached products (valid for 15m)')
+                        if (data.data) setProducts(data.data)
+                        if (data.tags) setTags(data.tags)
+                        if (data.taxes) setTaxes(data.taxes)
+                        if (data.defaultTaxId !== undefined) setDefaultTaxId(data.defaultTaxId)
+                        if (data.meta) {
+                            if (data.meta.categories) setCategories(data.meta.categories)
+                            if (data.meta.defaultTaxId !== undefined) setDefaultTaxId(data.meta.defaultTaxId)
+                        }
+                        setLoading(false)
+                        return
+                    }
+                } catch (e) {
+                    console.error('[ProductContext] Error parsing cache:', e)
+                }
+            }
+        }
+
         setLoading(true)
         try {
             const response = await fetch('/api/odoo/restaurant/products?limit=100')
@@ -62,6 +89,13 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
                 if (data.meta.categories) setCategories(data.meta.categories)
                 if (data.meta.defaultTaxId !== undefined) setDefaultTaxId(data.meta.defaultTaxId)
             }
+
+            // Update cache
+            localStorage.setItem(CACHE_KEY, JSON.stringify({
+                data,
+                timestamp: Date.now()
+            }))
+
             setError(null)
         } catch (err) {
             setError(err instanceof Error ? err : new Error('Unknown error fetching products'))
@@ -115,7 +149,7 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
         defaultTaxId,
         loading,
         error,
-        refreshProducts: fetchProducts,
+        refreshProducts: () => fetchProducts(true),
         getInclusivePrice
     }), [products, categories, tags, taxes, defaultTaxId, loading, error])
 

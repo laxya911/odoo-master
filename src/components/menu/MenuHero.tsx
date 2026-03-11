@@ -1,20 +1,24 @@
-
-'use client'
-
 import { useCompany } from '@/context/CompanyContext'
 import { useSession } from '@/context/SessionContext'
 import { AlertCircle, MapPin, Phone, Mail, Clock } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { useTranslations } from 'next-intl'
+import { useDynamicTranslation } from '@/hooks/use-dynamic-translation'
 
 export function MenuHero() {
     const { company, isLoading: companyLoading } = useCompany()
     const { session, isLoading: sessionLoading } = useSession()
+    const t = useTranslations('menuHero')
+    const { translate } = useDynamicTranslation()
 
     if (companyLoading || sessionLoading) {
         return (
             <div className="w-full h-64 bg-muted animate-pulse rounded-b-3xl mb-8" />
         )
     }
+
+    const street = company?.street && typeof company.street === 'string' ? company.street : null;
+    const city = company?.city && typeof company.city === 'string' ? company.city : null;
 
     return (
         <div className="relative pb-10">
@@ -24,23 +28,23 @@ export function MenuHero() {
             <div className="container mx-auto px-4 pt-10 pb-12 text-primary-foreground">
                 <div className="max-w-4xl mx-auto text-center space-y-4">
                     <h1 className="text-4xl md:text-5xl font-bold tracking-tight">
-                        {company?.name || 'Our Menu'}
+                        {translate(company?.name || 'Our Menu')}
                     </h1>
 
                     <div className="flex flex-wrap justify-center gap-4 text-sm md:text-base opacity-90">
-                        {company?.street && (
+                        {street && (
                             <div className="flex items-center gap-1">
                                 <MapPin className="h-4 w-4" />
-                                <span>{company.street}{company.city ? `, ${company.city}` : ''}</span>
+                                <span>{translate(street)}{city ? `, ${translate(city)}` : ''}</span>
                             </div>
                         )}
-                        {company?.phone && (
+                        {company?.phone && typeof company.phone === 'string' && (
                             <div className="flex items-center gap-1">
                                 <Phone className="h-4 w-4" />
                                 <span>{company.phone}</span>
                             </div>
                         )}
-                        {company?.email && (
+                        {company?.email && typeof company.email === 'string' && (
                             <div className="flex items-center gap-1">
                                 <Mail className="h-4 w-4" />
                                 <span>{company.email}</span>
@@ -56,9 +60,9 @@ export function MenuHero() {
                     {!session.isOpen ? (
                         <Alert variant="destructive" className="shadow-xl bg-destructive text-destructive-foreground border-none">
                             <AlertCircle className="h-5 w-5" />
-                            <AlertTitle className="text-lg font-bold ml-2">Restaurant is currently closed</AlertTitle>
+                            <AlertTitle className="text-lg font-bold ml-2">{t('closedTitle')}</AlertTitle>
                             <AlertDescription className="ml-2 opacity-90">
-                                Online ordering is unavailable. Please check back later or call us for assistance.
+                                {t('closedDesc')}
                             </AlertDescription>
                         </Alert>
                     ) : (
@@ -68,12 +72,12 @@ export function MenuHero() {
                                     <Clock className="h-5 w-5 text-green-600 dark:text-green-400" />
                                 </div>
                                 <div>
-                                    <p className="font-semibold text-green-700 dark:text-green-400">Open for Ordering</p>
-                                    <p className="text-xs text-muted-foreground">{session.shopName || 'Main Store'}</p>
+                                    <p className="font-semibold text-green-700 dark:text-green-400">{t('openTitle')}</p>
+                                    <p className="text-xs text-muted-foreground">{translate(session.shopName || 'Main Store')}</p>
                                 </div>
                             </div>
                             <div className="hidden sm:block text-sm text-muted-foreground">
-                                Welcome! Place your order below.
+                                {t('welcome')}
                             </div>
                         </div>
                     )}
@@ -82,3 +86,4 @@ export function MenuHero() {
         </div>
     )
 }
+

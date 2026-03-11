@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { odooCall, OdooClientError } from '@/lib/odoo-client'
+import { getSession } from '@/lib/auth'
 import type { OdooRecord, OrderPayload } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -18,6 +19,27 @@ export async function GET(request: NextRequest) {
     const name = searchParams.get('name')
 
     const domain: Array<unknown> = []
+
+    // Security Filter: Always restrict to current user's partner
+    const session = await getSession();
+    if (session && session.id) {
+        const users = await odooCall<any[]>('res.users', 'read', {
+            ids: [session.id],
+            fields: ['partner_id']
+        });
+        if (users && users.length > 0) {
+            const partnerId = users[0].partner_id[0];
+            domain.push(['partner_id', '=', partnerId]);
+        }
+    } else {
+        // If not logged in, we only allow searching by specific email/name if provided,
+        // but even then, it's better to limit it. 
+        // For now, if no session, we require email to find "their" guest orders.
+        if (!email && !name) {
+            return NextResponse.json({ data: [], meta: { total: 0 } });
+        }
+    }
+
     if (startDate) {
       domain.push(['date_order', '>=', `${startDate} 00:00:00`])
     }

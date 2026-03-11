@@ -12,8 +12,10 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { useCompany } from '@/context/CompanyContext'
 import { useSession } from '@/context/SessionContext'
-import { useToast } from '@/hooks/use-toast'
+import { toast } from 'sonner'
 import type { CartItem, PaymentProvider } from '@/lib/types'
+import { useTranslations } from 'next-intl'
+import { useDynamicTranslation } from '@/hooks/use-dynamic-translation'
 
 interface CheckoutFormInnerProps {
   cartItems: CartItem[]
@@ -42,7 +44,10 @@ const CheckoutFormInnerBase = ({
 
   const { formatPrice } = useCompany()
   const { session } = useSession()
-  const { toast } = useToast()
+  const t = useTranslations('checkout')
+  const cartT = useTranslations('cart')
+  const commonT = useTranslations('common')
+  const { translate } = useDynamicTranslation()
 
   // These map to the parent's Form Provider
   const form = useFormContext()
@@ -58,10 +63,8 @@ const CheckoutFormInnerBase = ({
     if (!isValid) return
 
     if (!session.isOpen) {
-      toast({
-        title: 'Store Closed',
-        description: 'Orders cannot be placed while the store is closed.',
-        variant: 'destructive',
+      toast.error(cartT('closed') || 'Store Closed', {
+        description: commonT('storeClosedDesc') || 'Orders cannot be placed while the store is closed.',
       })
       return
     }
@@ -103,20 +106,16 @@ const CheckoutFormInnerBase = ({
           result.paymentIntent?.status === 'requires_capture'
         ) {
           // Payment confirmed, webhook handles order generation
-          toast({
-            title: 'Payment Received',
-            description: 'Your payment was successful. Generating order...',
+          toast.success(commonT('paymentReceived') || 'Payment Received', {
+            description: commonT('paymentSuccessDesc') || 'Your payment was successful. Generating order...',
           })
           onSuccess()
         }
       }
     } catch (error: any) {
       console.error('Payment Error:', error)
-      toast({
-        title: 'Payment Failed',
-        description:
-          error.message || 'There was an issue processing your payment.',
-        variant: 'destructive',
+      toast.error(commonT('paymentFailed') || 'Payment Failed', {
+        description: error.message || 'There was an issue processing your payment.',
       })
     } finally {
       setIsProcessing(false)
@@ -138,7 +137,7 @@ const CheckoutFormInnerBase = ({
                 <PaymentElement
                   className='theme-dark'
                   options={{
-                    layout: 'accordion', // More compact for modals
+                    layout: 'tabs', // More compact for modals
                   }}
                 />
               </div>
@@ -146,7 +145,7 @@ const CheckoutFormInnerBase = ({
               <div className='flex flex-col items-center justify-center py-12 space-y-4'>
                 <Loader2 className='h-8 w-8 animate-spin text-amber-500' />
                 <span className='text-neutral-400 text-xs font-bold uppercase tracking-widest'>
-                  Securing payment gateway...
+                  {t('initPayment')}
                 </span>
               </div>
             )}
@@ -158,7 +157,7 @@ const CheckoutFormInnerBase = ({
           <div className='p-8 pb-4 bg-white z-10 border-b flex items-center justify-between'>
             <h2 className='text-3xl font-serif font-bold text-neutral-900 tracking-tight flex items-center gap-3'>
               <ShoppingBag className='h-7 w-7 text-amber-500' />
-              Checkout
+              {t('title')}
             </h2>
           </div>
 
@@ -168,7 +167,7 @@ const CheckoutFormInnerBase = ({
               <section className='bg-neutral-50 rounded-3xl p-6 border border-neutral-100 shadow-sm'>
                 <div className='flex items-center justify-between mb-4'>
                   <h3 className='text-xs font-bold uppercase tracking-[0.2em] text-neutral-400'>
-                    Order Summary
+                    {t('orderSummary') || 'Order Summary'}
                   </h3>
                 </div>
                 <div className='space-y-3'>
@@ -181,7 +180,7 @@ const CheckoutFormInnerBase = ({
                         <span className='font-bold text-amber-600'>
                           {item.quantity}×
                         </span>{' '}
-                        {item.product.name}
+                        {translate(item.product.name)}
                       </p>
                       <span className='text-sm font-bold text-neutral-900'>
                         {formatPrice(item.product.list_price * item.quantity)}
@@ -194,7 +193,7 @@ const CheckoutFormInnerBase = ({
                       {formatPrice(total)}
                     </p>
                     <p className='text-[10px] text-neutral-400 font-medium'>
-                      Incl. Tax {formatPrice(totalTax)}
+                      {commonT('inclTax') || 'Incl. Tax'} {formatPrice(totalTax)}
                     </p>
                   </div>
                 </div>
@@ -205,39 +204,39 @@ const CheckoutFormInnerBase = ({
                 <div className='flex items-center gap-3'>
                   <div className='h-1 w-8 bg-amber-500 rounded-full' />
                   <h3 className='text-sm font-bold uppercase tracking-widest text-neutral-800'>
-                    1. Personal Details
+                    1. {t('personal')}
                   </h3>
                 </div>
                 <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
                   <div className='space-y-1.5'>
                     <Label className='text-[10px] font-bold text-neutral-400 uppercase tracking-widest ml-1'>
-                      Full Name
+                      {t('name')}
                     </Label>
                     <Input
                       {...form.register('name')}
-                      placeholder='Name'
+                      placeholder={t('name')}
                       className='bg-white border-neutral-200 focus:border-amber-500 h-12 rounded-xl'
                     />
                   </div>
                   <div className='space-y-1.5'>
                     <Label className='text-[10px] font-bold text-neutral-400 uppercase tracking-widest ml-1'>
-                      Phone Number
+                      {t('phone')}
                     </Label>
                     <Input
                       {...form.register('phone')}
-                      placeholder='Phone'
+                      placeholder={t('phone')}
                       className='bg-white border-neutral-200 focus:border-amber-500 h-12 rounded-xl'
                     />
                   </div>
                 </div>
                 <div className='space-y-1.5'>
                   <Label className='text-[10px] font-bold text-neutral-400 uppercase tracking-widest ml-1'>
-                    Email Address
+                    {t('email')}
                   </Label>
                   <Input
                     type='email'
                     {...form.register('email')}
-                    placeholder='Email'
+                    placeholder={t('email')}
                     className='bg-white border-neutral-200 focus:border-amber-500 h-12 rounded-xl'
                   />
                 </div>
@@ -248,7 +247,7 @@ const CheckoutFormInnerBase = ({
                 <div className='flex items-center gap-3'>
                   <div className='h-1 w-8 bg-amber-500 rounded-full' />
                   <h3 className='text-sm font-bold uppercase tracking-widest text-neutral-800'>
-                    2. Order Details
+                    2. {t('order')}
                   </h3>
                 </div>
 
@@ -284,32 +283,32 @@ const CheckoutFormInnerBase = ({
                 <div className='space-y-4 pt-2'>
                   <div className='space-y-1.5'>
                     <Label className='text-[10px] font-bold text-neutral-400 uppercase tracking-widest ml-1'>
-                      Street Address
+                      {t('street')}
                     </Label>
                     <Input
                       {...form.register('street')}
-                      placeholder='Street'
+                      placeholder={t('street')}
                       className='bg-white border-neutral-200 focus:border-amber-500 h-12 rounded-xl'
                     />
                   </div>
                   <div className='grid grid-cols-2 gap-4'>
                     <div className='space-y-1.5'>
                       <Label className='text-[10px] font-bold text-neutral-400 uppercase tracking-widest ml-1'>
-                        City
+                        {t('city')}
                       </Label>
                       <Input
                         {...form.register('city')}
-                        placeholder='City'
+                        placeholder={t('city')}
                         className='bg-white border-neutral-200 focus:border-amber-500 h-12 rounded-xl'
                       />
                     </div>
                     <div className='space-y-1.5'>
                       <Label className='text-[10px] font-bold text-neutral-400 uppercase tracking-widest ml-1'>
-                        ZIP Code
+                        {t('zip')}
                       </Label>
                       <Input
                         {...form.register('zip')}
-                        placeholder='ZIP'
+                        placeholder={t('zip')}
                         className='bg-white border-neutral-200 focus:border-amber-500 h-12 rounded-xl'
                       />
                     </div>
@@ -318,11 +317,11 @@ const CheckoutFormInnerBase = ({
 
                 <div className='space-y-1.5'>
                   <Label className='text-[10px] font-bold text-neutral-400 uppercase tracking-widest ml-1'>
-                    Order Notes
+                    {t('notes')}
                   </Label>
                   <Textarea
                     {...form.register('notes')}
-                    placeholder='Instructions...'
+                    placeholder={t('placeholderNotes')}
                     className='bg-white border-neutral-200 focus:border-amber-500 rounded-2xl h-24'
                   />
                 </div>
@@ -333,7 +332,7 @@ const CheckoutFormInnerBase = ({
                 <div className='flex items-center gap-3'>
                   <div className='h-1 w-8 bg-amber-500 rounded-full' />
                   <h3 className='text-sm font-bold uppercase tracking-widest text-neutral-800'>
-                    3. Payment
+                    3. {t('payment')}
                   </h3>
                 </div>
                 <div className='bg-neutral-900 rounded-4xl p-6 text-white space-y-6 shadow-xl'>
@@ -341,7 +340,7 @@ const CheckoutFormInnerBase = ({
                     <PaymentElement className='theme-dark' />
                   ) : (
                     <div className='text-center py-6 text-neutral-400 text-sm'>
-                      Securing payment gateway...
+                      {t('loading') || 'Securing payment gateway...'}
                     </div>
                   )}
                 </div>
@@ -357,7 +356,7 @@ const CheckoutFormInnerBase = ({
               disabled={isProcessing}
               className='h-14 flex-1 font-bold text-neutral-400 rounded-2xl'
             >
-              Cancel
+              {commonT('cancel') || 'Cancel'}
             </Button>
             <Button
               type='submit'
@@ -367,7 +366,7 @@ const CheckoutFormInnerBase = ({
               {isProcessing ? (
                 <Loader2 className='h-6 w-6 animate-spin' />
               ) : (
-                'Place Order'
+                t('completePay') || 'Place Order'
               )}
             </Button>
           </footer>

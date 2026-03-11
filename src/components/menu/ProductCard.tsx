@@ -8,6 +8,8 @@ import { Product } from '@/lib/types'
 import { cn, generateSlug } from '@/lib/utils'
 import { useCompany } from '@/context/CompanyContext'
 import { useProducts } from '@/context/ProductContext'
+import { useTranslations } from 'next-intl'
+import { useDynamicTranslation } from '@/hooks/use-dynamic-translation'
 
 interface ProductCardProps {
   product: Product
@@ -26,6 +28,11 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 }) => {
   const { formatPrice } = useCompany()
   const { getInclusivePrice } = useProducts()
+  const t = useTranslations()
+  const { translate } = useDynamicTranslation()
+
+  const cartT = useTranslations('cart')
+  const menuT = useTranslations('menu')
   return (
     <div
       className={cn(
@@ -42,7 +49,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
               ? `data:image/png;base64,${product.image_256}`
               : '/images/placeholder-food.jpg'
           }
-          alt={product.name}
+          alt={translate(product.name)}
           fill
           className='object-cover group-hover:scale-105 transition-transform duration-700'
           sizes='(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw'
@@ -53,7 +60,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       <div className='p-6 md:p-8 flex flex-col grow'>
         <div className='flex justify-between items-start mb-2'>
           <p className='text-xl font-display font-bold text-white leading-tight'>
-            {product.name}
+            {translate(product.name)}
           </p>
           <span className='text-accent-gold font-bold ml-2'>
             {formatPrice(getInclusivePrice(product))}
@@ -61,7 +68,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         </div>
         {typeof product.description_sale === 'string' && (
           <p className='text-[12px] text-white/70 font-jp tracking-widest uppercase mb-4 line-clamp-2'>
-            {product.description_sale}
+            {translate(product.description_sale)}
           </p>
         )}
 
@@ -77,7 +84,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                 onOpenConfigurator(product)
               }}
             >
-              {isPosOpen ? 'Order' : 'Closed'}
+              {isPosOpen ? cartT('order') || 'Order' : cartT('closed') || 'Closed'}
             </Button>
             <Link
               href={`/menu/${generateSlug(product.name)}`}
@@ -87,9 +94,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({
               <Button
                 variant='ghost'
                 size='sm'
-                className='w-full rounded-2xl border border-white/5 hover:bg-white/5 text-white/40 hover:text-white'
+                className='w-full rounded-2xl border border-white/10 hover:bg-white/5 text-white/70 hover:text-white'
               >
-                Details
+                {menuT('viewDetails')}
               </Button>
             </Link>
           </div>

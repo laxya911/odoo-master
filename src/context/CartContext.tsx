@@ -1,10 +1,13 @@
 'use client'
 
-import React, { createContext, useContext, useState, useCallback } from 'react'
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react'
 import type { Product, CartItem, CartItemMeta } from '@/lib/types'
-import { useToast } from '@/hooks/use-toast'
+import { toast } from 'sonner'
 import { calculateItemPricing } from '@/lib/pricing-utils'
 import { useProducts } from './ProductContext'
+import { useTranslations } from 'next-intl'
+import { useAuth } from './AuthContext'
+import { useProductConfigurator } from '@/hooks/use-product-configurator'
 
 export interface LastOrder {
   id: string
@@ -49,7 +52,95 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false)
   const [hasOpenedAutomatically, setHasOpenedAutomatically] = useState(false)
   const [lastOrder, setLastOrder] = useState<LastOrder | null>(null)
-  const { toast } = useToast()
+  const [isInitialized, setIsInitialized] = useState(false)
+  
+  const { user, isAuthenticated } = useAuth()
+  const t = useTranslations('cart')
+
+  // Load cart from localStorage on mount
+  useEffect(() => {
+    const savedCart = localStorage.getItem('ram_cart')
+    if (savedCart) {
+      try {
+        setCartItems(JSON.parse(savedCart))
+      } catch (e) {
+        console.error('Failed to parse cart from localStorage:', e)
+      }
+    }
+    setIsInitialized(true)
+  }, [])
+
+  // Save cart to localStorage on change
+  useEffect(() => {
+    if (isInitialized) {
+      localStorage.setItem('ram_cart', JSON.stringify(cartItems))
+    }
+  }, [cartItems, isInitialized])
+
+  // Sync merge with Odoo when authenticated (only on first init)
+  const [hasSyncedOnInit, setHasSyncedOnInit] = useState(false)
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setHasSyncedOnInit(false);
+      return;
+    }
+
+    const syncWithOdoo = async () => {
+      if (!isInitialized || hasSyncedOnInit) return
+
+      try {
+        const res = await fetch('/api/odoo/restaurant/cart')
+        const data = await res.json()
+        
+        if (data.cart && data.cart.length > 0) {
+          // If local is empty, just take remote
+          if (cartItems.length === 0) {
+            setCartItems(data.cart)
+          } else {
+            // Merge logic: Add remote items that aren't already in local (by product id)
+            setCartItems(prev => {
+                const combined = [...prev];
+                data.cart.forEach((remoteItem: CartItem) => {
+                    const exists = combined.some(localItem => localItem.product.id === remoteItem.product.id);
+                    if (!exists) combined.push(remoteItem);
+                });
+                return combined;
+            });
+          }
+        }
+        setHasSyncedOnInit(true)
+      } catch (e) {
+        console.error('Failed to fetch cart from Odoo:', e)
+      }
+    }
+
+    syncWithOdoo()
+  }, [isAuthenticated, isInitialized, hasSyncedOnInit])
+
+  // Save to Odoo on change
+  useEffect(() => {
+    const saveToOdoo = async () => {
+      if (!isAuthenticated || !isInitialized || !hasSyncedOnInit) return
+
+      try {
+        await fetch('/api/odoo/restaurant/cart', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cart: cartItems })
+        })
+      } catch (e) {
+        console.error('Failed to save cart to Odoo:', e)
+      }
+    }
+
+    // Debounce save to Odoo to avoid excessive RPC calls
+    const timer = setTimeout(() => {
+        saveToOdoo()
+    }, 2000)
+
+    return () => clearTimeout(timer)
+  }, [cartItems, isAuthenticated, isInitialized])
 
   const addToCart = useCallback(
     (product: Product, quantity: number = 1, meta?: CartItemMeta) => {
@@ -103,16 +194,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         }
       })
 
-      toast({
-        title: 'Added to cart',
-        description: `${product.name} has been added to your order.`,
+      toast.success(t('added'), {
+        description: t('addedDesc', { product: product.name }),
       })
       if (!hasOpenedAutomatically) {
         setIsCartOpen(true)
         setHasOpenedAutomatically(true)
       }
     },
-    [toast, hasOpenedAutomatically],
+    [t, hasOpenedAutomatically],
   )
 
   const removeFromCart = useCallback((cartItemId: string) => {
@@ -188,8 +278,18 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         date: new Date().toLocaleDateString()
       });
     }
-    setCartItems([])
-  }, [cartItems, getCartTotal])
+    
+    setCartItems([]);
+    
+    // Clear in Odoo as well
+    if (isAuthenticated) {
+        fetch('/api/odoo/restaurant/cart', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cart: [] })
+        }).catch(err => console.error('Failed to clear cart in Odoo:', err));
+    }
+  }, [cartItems, getCartTotal, isAuthenticated])
 
   const cartCount = cartItems.reduce((acc, item) => acc + item.quantity, 0)
 
