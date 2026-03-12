@@ -48,7 +48,7 @@ export async function fulfillOdooOrder(
   console.log('[Fulfillment] Searching for active POS session and config...')
   const activeSessions = await odooCall<any[]>('pos.session', 'search_read', {
     domain: [['state', '=', 'opened']],
-    fields: ['id', 'config_id'],
+    fields: ['id', 'config_id', 'user_id'], // Add user_id
     limit: 1,
   })
 
@@ -60,6 +60,7 @@ export async function fulfillOdooOrder(
   const session = activeSessions[0]
   const sessionId = session.id
   const configId = session.config_id[0]
+  const userId = session.user_id ? session.user_id[0] : false
 
   // Directly fetch payment methods for this config
   const posConfig = await odooCall<any[]>('pos.config', 'read', {
@@ -256,6 +257,7 @@ export async function fulfillOdooOrder(
     name: `Online Order - ${stripePaymentIntentId ? stripePaymentIntentId.slice(-6) : 'WEB'}`,
     session_id: sessionId,
     partner_id: partnerId,
+    user_id: userId,
     lines: orderBreakdown.lines.map((line, index) => {
       // Basic line dictionary
       const vals: any = {
@@ -280,8 +282,10 @@ export async function fulfillOdooOrder(
           ? JSON.stringify([{ note: line.customer_note, colorIndex: 9 }])
           : '',
         // Odoo 19 Combo Linkage
-        combo_id: line.combo_id,
-        combo_item_id: (line as any).combo_item_id,
+        // We omit combo_id and combo_item_id here to prevent websocket sync race conditions
+        // where POS receives a child line without a parent yet. They are linked in step 5.5.
+        // combo_id: line.combo_id,
+        // combo_item_id: (line as any).combo_item_id,
         attribute_value_ids:
           line.attribute_value_ids && line.attribute_value_ids.length > 0
             ? [[6, 0, line.attribute_value_ids]]
@@ -366,7 +370,8 @@ export async function fulfillOdooOrder(
              vals: { 
                combo_parent_id: lastParentLineId,
                // Ensure combo_item_id is sent as an ID, not just list_price
-               combo_item_id: (originalLine as any).combo_item_id
+               combo_item_id: (originalLine as any).combo_item_id,
+               combo_id: originalLine.combo_id
              }
            })
         }

@@ -11,7 +11,6 @@ import { Footer } from '@/components/layout/Footer'
 import { CartProvider } from '@/context/CartContext'
 import { ProductProvider } from '@/context/ProductContext'
 import { CartDrawer } from '@/components/cart/CartDrawer'
-import { FloatingOrderOrb } from '@/components/cart/FloatingOrderOrb'
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages, setRequestLocale, getTranslations } from 'next-intl/server';
 import { routing } from '@/i18n/routing';
@@ -96,7 +95,6 @@ export default async function RootLayout({
                       <Navbar />
                       {children}
                       <CartDrawer />
-                      <FloatingOrderOrb />
                       <Footer />
                       <Toaster richColors position="top-center" closeButton />
                     </CartProvider>

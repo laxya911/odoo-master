@@ -2,7 +2,7 @@
 import React, { useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { useProducts } from '@/context/ProductContext';
-import { usePosSession } from '@/hooks/use-odoo';
+
 import { useProductConfigurator } from '@/hooks/use-product-configurator';
 import { ProductCard } from '@/components/menu/ProductCard';
 import { Product } from '@/lib/types';

@@ -11,21 +11,18 @@ import type { PaymentConfigResponse } from '@/lib/types'
 
 interface PaymentConfigContextType {
   config: PaymentConfigResponse | null
-  stripePromise: Promise<any> | null
   isLoading: boolean
   error: string | null
 }
 
 const PaymentConfigContext = createContext<PaymentConfigContextType>({
   config: null,
-  stripePromise: null,
   isLoading: false,
   error: null,
 })
 
 export function PaymentConfigProvider({ children }: { children: ReactNode }) {
   const [config, setConfig] = useState<PaymentConfigResponse | null>(null)
-  const [stripePromise, setStripePromise] = useState<Promise<any> | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -60,19 +57,9 @@ export function PaymentConfigProvider({ children }: { children: ReactNode }) {
     fetchConfig()
   }, [])
 
-  // once config is fetched, start loading Stripe JS if needed
-  useEffect(() => {
-    if (config?.provider === 'stripe' && config.public_key && !stripePromise) {
-      // loadStripe is from @stripe/stripe-js; import lazily to avoid bundling on server
-      import('@stripe/stripe-js').then(({ loadStripe }) => {
-        setStripePromise(loadStripe(config.public_key))
-      })
-    }
-  }, [config, stripePromise])
-
   return (
     <PaymentConfigContext.Provider
-      value={{ config, stripePromise, isLoading, error }}
+      value={{ config, isLoading, error }}
     >
       {children}
     </PaymentConfigContext.Provider>
