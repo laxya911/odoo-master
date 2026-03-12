@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 // framer-motion removed to reduce runtime overhead during interactive flows
 import { usePathname, useRouter, Link } from '@/i18n/routing'
 import { OrderOrb } from '../cart/OrderOrb'
@@ -12,6 +12,24 @@ import { Button } from '@/components/ui/button'
 import Image from 'next/image'
 import { useTranslations } from 'next-intl'
 import { LanguageSwitcher } from './LanguageSwitcher'
+
+import { useProducts } from '@/context/ProductContext'
+import { useProductConfigurator } from '@/hooks/use-product-configurator'
+import { useCompany } from '@/context/CompanyContext'
+import { useDynamicTranslation } from '@/hooks/use-dynamic-translation'
+import { generateSlug } from '@/lib/utils'
+import dynamic from 'next/dynamic'
+
+// Dynamic import for ProductConfigurator to reduce initial bundle
+const ProductConfigurator = dynamic(
+  () =>
+    import('@/components/menu/ProductConfigurator').then((mod) => ({
+      default: mod.ProductConfigurator,
+    })),
+  {
+    ssr: false,
+  },
+)
 
 interface NavbarProps {
   // Props are now optional as we'll handle state internally for layout usage
@@ -34,6 +52,28 @@ export const Navbar: React.FC<NavbarProps> = ({
   const { user, isAuthenticated, logout } = useAuth()
   const t = useTranslations('nav')
   const commonT = useTranslations('common')
+  const menuT = useTranslations('menu')
+
+  const { products } = useProducts()
+  const {
+    selectedProduct,
+    setSelectedProduct,
+    isLoadingDetails,
+    openConfigurator,
+    isPosOpen
+  } = useProductConfigurator()
+  const { formatPrice } = useCompany()
+  const { translate } = useDynamicTranslation()
+
+  // Filter products for search
+  const searchResults = useMemo(() => {
+    if (!searchQuery.trim() || searchQuery.length < 2) return []
+    const query = searchQuery.toLowerCase().trim()
+    return products.filter(p => 
+      translate(p.name).toLowerCase().includes(query) || 
+      (p.description_sale && translate(p.description_sale).toLowerCase().includes(query))
+    ).slice(0, 5) // Limit to top 5 results
+  }, [searchQuery, products, translate])
 
   // Combine props and internal state
   const isScrolled = propIsScrolled ?? internalIsScrolled
@@ -71,6 +111,12 @@ export const Navbar: React.FC<NavbarProps> = ({
     }
   }
 
+  const handleProductClick = (product: any) => {
+    openConfigurator(product)
+    setIsSearchOpen(false)
+    setSearchQuery('')
+  }
+
   const navItems = [
     { id: 'home', label: t('home'), href: '/' as any },
     { id: 'menu', label: t('menu'), href: '/menu' as any },
@@ -80,71 +126,124 @@ export const Navbar: React.FC<NavbarProps> = ({
   ]
 
   return (
-    <nav
-      role='navigation'
-      className={`fixed top-0 left-0 w-full px-2 md:px-14 z-50 transition-all duration-500 ${isScrolled
-        ? 'py-4 glass border-b border-white/10'
-        : 'py-8 bg-transparent'
-        }`}
-    >
-      <div className='container mx-auto px-6 flex justify-between items-center'>
-        <Link
-          href='/'
-          className='cursor-pointer group'
-          onClick={() => setIsMenuOpen(false)}
-        >
-          <h1 className='text-2xl font-display font-bold tracking-widest text-white group-hover:text-accent-gold transition-colors'>
-            RAM <span className='text-accent-gold'>&amp;</span> CO.
-          </h1>
-          <p className='text-[10px] tracking-[0.3em] uppercase text-white/70 -mt-1 group-hover:text-white/80 transition-colors'>
-            {commonT('subtitle')}
-          </p>
-        </Link>
+    <>
+      <nav
+        role='navigation'
+        className={`fixed top-0 left-0 w-full px-2 md:px-14 z-50 transition-all duration-500 ${isScrolled
+          ? 'py-4 glass border-b border-white/10'
+          : 'py-8 bg-transparent'
+          }`}
+      >
+        <div className='container mx-auto px-6 flex justify-between items-center'>
+          <Link
+            href='/'
+            className='cursor-pointer group'
+            onClick={() => setIsMenuOpen(false)}
+          >
+            <h1 className='text-2xl font-display font-bold tracking-widest text-white group-hover:text-accent-gold transition-colors'>
+              RAM <span className='text-accent-gold'>&amp;</span> CO.
+            </h1>
+            <p className='text-[10px] tracking-[0.3em] uppercase text-white/70 -mt-1 group-hover:text-white/80 transition-colors'>
+              {commonT('subtitle')}
+            </p>
+          </Link>
 
-        {/* Floating Cart Button - Center */}
-        {/* <FloatingCartButton /> */}
+          {/* Floating Cart Button - Center */}
+          {/* <FloatingCartButton /> */}
 
-        {/* mobile center order orb */}
-        <div className='flex items-center gap-4'>
-          <div className='relative flex items-center'>
-            {isSearchOpen ? (
-              <form onSubmit={handleSearch} className='flex items-center'>
-                <Input
-                  autoFocus
-                  placeholder={commonT('search')}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className='w-0 focus:w-48 transition-[width] duration-300 h-9 bg-white/10 border-white/20 text-white placeholder:text-white/40 pr-12'
-                />
-                <div className='absolute right-2 flex items-center gap-1'>
-                  {searchQuery && (
-                    <button
-                      type='button'
-                      onClick={() => setSearchQuery('')}
-                      className='p-1 text-white/60 hover:text-white'
-                    >
-                      <X className='h-3 w-3' />
-                    </button>
+          {/* mobile center order orb */}
+          <div className='flex items-center gap-4'>
+            <div className='relative flex items-center'>
+              {isSearchOpen ? (
+                <div className='relative'>
+                  <form onSubmit={handleSearch} className='flex items-center'>
+                    <Input
+                      autoFocus
+                      placeholder={commonT('search')}
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className='w-48 md:w-64 transition-all duration-300 h-9 bg-white/10 border-white/20 text-white placeholder:text-white/40 pr-12'
+                    />
+                    <div className='absolute right-2 flex items-center gap-1'>
+                      {searchQuery && (
+                        <button
+                          type='button'
+                          onClick={() => setSearchQuery('')}
+                          className='p-1 text-white/60 hover:text-white'
+                        >
+                          <X className='h-3 w-3' />
+                        </button>
+                      )}
+                      <button
+                        type='button'
+                        onClick={() => setIsSearchOpen(false)}
+                        className='p-1 text-white/60 hover:text-white'
+                      >
+                        <X className='h-4 w-4' />
+                      </button>
+                    </div>
+                  </form>
+
+                  {/* Live Search Results */}
+                  {searchResults.length > 0 && (
+                    <div className='absolute top-full right-0 mt-2 w-72 md:w-96 bg-neutral-900/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden py-2'>
+                      {searchResults.map((product) => (
+                        <div
+                          key={product.id}
+                          className='p-3 flex items-center gap-4 hover:bg-white/5 transition-colors cursor-pointer group/result'
+                          onClick={() => handleProductClick(product)}
+                        >
+                          <div className='relative w-12 h-12 rounded-lg overflow-hidden border border-white/5'>
+                            <Image
+                              src={
+                                product.image_256
+                                  ? `data:image/png;base64,${product.image_256}`
+                                  : '/images/placeholder-food.jpg'
+                              }
+                              alt={translate(product.name)}
+                              fill
+                              className='object-cover'
+                            />
+                          </div>
+                          <div className='grow'>
+                            <h4 className='text-sm font-bold text-white group-hover/result:text-accent-gold transition-colors'>
+                              {translate(product.name)}
+                            </h4>
+                            <p className='text-xs text-accent-gold'>
+                              {formatPrice(product.list_price)}
+                            </p>
+                          </div>
+                          <Link
+                            href={`/menu/${generateSlug(product.name)}`}
+                            className='p-2 text-white/40 hover:text-white transition-colors'
+                            onClick={(e) => e.stopPropagation()}
+                            title={menuT('viewDetails')}
+                          >
+                            <ChevronRight className='h-4 w-4' />
+                          </Link>
+                        </div>
+                      ))}
+                      <div className='px-4 pt-2 pb-1 border-t border-white/5'>
+                        <button 
+                          onClick={handleSearch}
+                          className='text-[10px] uppercase tracking-widest font-bold text-white/40 hover:text-white transition-colors'
+                        >
+                          {commonT('viewAllResults')}
+                        </button>
+                      </div>
+                    </div>
                   )}
-                  <button
-                    type='button'
-                    onClick={() => setIsSearchOpen(false)}
-                    className='p-1 text-white/60 hover:text-white'
-                  >
-                    <X className='h-4 w-4' />
-                  </button>
                 </div>
-              </form>
-            ) : (
-              <button
-                onClick={() => setIsSearchOpen(true)}
-                className='p-2 text-white/70 hover:text-accent-gold transition-colors'
-              >
-                <Search className='h-5 w-5' />
-              </button>
-            )}
-          </div>
-          <OrderOrb variant='navbar' />
+              ) : (
+                <button
+                  onClick={() => setIsSearchOpen(true)}
+                  className='p-2 text-white/70 hover:text-accent-gold transition-colors'
+                >
+                  <Search className='h-5 w-5' />
+                </button>
+              )}
+            </div>
+            <OrderOrb variant='navbar' />
 
           <div className='hidden lg:flex items-center ml-2 border-l border-white/10 pl-6 gap-6'>
             <LanguageSwitcher />
@@ -358,6 +457,18 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         )
       }
-    </nav >
+      </nav >
+
+      {/* Product Configurator Modal */}
+      {selectedProduct && (
+        <div className='fixed inset-0 z-100 flex items-center justify-center bg-neutral-950/95 backdrop-blur-xl p-0 md:p-6'>
+          <ProductConfigurator
+            product={selectedProduct}
+            onClose={() => setSelectedProduct(null)}
+            isLoadingDetails={isLoadingDetails}
+          />
+        </div>
+      )}
+    </>
   )
 }
