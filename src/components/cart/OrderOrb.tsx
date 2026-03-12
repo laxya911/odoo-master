@@ -1,30 +1,34 @@
 'use client'
 
+import Link from 'next/link'
 import { useCart } from '@/context/CartContext'
+import { usePathname } from '@/i18n/routing'
 
 export function OrderOrb({
   variant = 'floating',
 }: {
   variant?: 'floating' | 'navbar'
 }) {
-  const { cartCount, setIsCartOpen } = useCart()
+  const { cartCount } = useCart()
+  const pathname = usePathname()
 
-  if (cartCount === 0) return null
+  // Don't show on the cart page itself
+  if (cartCount === 0 || pathname === '/cart') return null
 
   return (
-    <button
-      onClick={() => setIsCartOpen(true)}
+    <Link
+      href='/cart'
       className={`
         relative
         ${variant === 'floating' ? 'w-16 h-16' : 'w-10 h-10'}
         bg-linear-to-br from-accent-gold to-accent-chili
-        bg-accent-gold text-primary rounded-full shadow-2xl flex items-center justify-center relative cursor-pointer
+        bg-accent-gold text-primary rounded-full shadow-2xl flex items-center justify-center cursor-pointer
       `}
     >
-      {/* subtle heat ring - static border (animation removed for performance) */}
+      {/* subtle heat ring - static border */}
       <span className='absolute inset-0 rounded-full border border-white/30' />
 
-      {/* count */}
+      {/* bag icon */}
       <svg
         className='w-6 h-6'
         fill='none'
@@ -41,6 +45,6 @@ export function OrderOrb({
       <span className='absolute top-0 right-1 translate-x-1/2 -translate-y-1/2 text-[10px] bg-white text-primary w-5 h-5 rounded-full flex items-center justify-center font-bold'>
         {cartCount}
       </span>
-    </button>
+    </Link>
   )
 }

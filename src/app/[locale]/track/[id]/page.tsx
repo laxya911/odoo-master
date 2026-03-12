@@ -17,6 +17,7 @@ import { useCompany } from '@/context/CompanyContext';
 import { generateInvoice } from '@/lib/pdf-invoice';
 import { useTranslations } from 'next-intl';
 import { useDynamicTranslation } from '@/hooks/use-dynamic-translation';
+import { useCart } from '@/context/CartContext';
 
 type OrderStatus = 'received' | 'preparing' | 'ready' | 'delivering' | 'delivered';
 
@@ -41,8 +42,14 @@ export default function DynamicTrackOrderPage() {
     // Track status simulation (until backend logic is ready)
     const [currentStatus, setCurrentStatus] = useState<OrderStatus>('received');
     const [progress, setProgress] = useState(15);
+    const { clearCart } = useCart();
 
     useEffect(() => {
+        // Clear cart if arriving from a successful payment
+        if (typeof window !== 'undefined' && window.location.search.includes('success=true')) {
+            clearCart();
+        }
+
         const fetchOrder = async () => {
             try {
                 const res = await fetch(`/api/odoo/restaurant/orders/${params.id}`);
@@ -66,6 +73,25 @@ export default function DynamicTrackOrderPage() {
         if (params.id) fetchOrder();
     }, [params.id]);
 
+
+    if (loading) {
+        return (
+            <div className="container mx-auto px-4 py-32 max-w-6xl animate-pulse space-y-12">
+                <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+                    <div className="space-y-4">
+                        <div className="h-4 w-24 bg-neutral-200 rounded-full" />
+                        <div className="h-12 w-64 bg-neutral-200 rounded-2xl" />
+                        <div className="h-6 w-48 bg-neutral-200 rounded-full" />
+                    </div>
+                    <div className="h-20 w-48 bg-neutral-200 rounded-[2rem]" />
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+                    <div className="lg:col-span-2 h-[400px] bg-neutral-200 rounded-[3rem]" />
+                    <div className="h-[400px] bg-neutral-200 rounded-[2.5rem]" />
+                </div>
+            </div>
+        );
+    }
 
     if (error || !order) {
         return (

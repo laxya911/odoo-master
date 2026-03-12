@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, ChefHat, CheckCircle2, Search } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { useCart } from '@/context/CartContext';
 import { useTranslations } from 'next-intl';
 
 export default function TrackLatestOrderPage() {
@@ -11,8 +12,13 @@ export default function TrackLatestOrderPage() {
     const { user } = useAuth();
     const t = useTranslations('track');
     const [status, setStatus] = useState<'searching' | 'found' | 'error'>('searching');
+    const { clearCart } = useCart();
 
     useEffect(() => {
+        if (typeof window !== 'undefined' && window.location.search.includes('success=true')) {
+            clearCart();
+        }
+
         if (!user?.email) {
             const timer = setTimeout(() => setStatus('error'), 5000);
             return () => clearTimeout(timer);

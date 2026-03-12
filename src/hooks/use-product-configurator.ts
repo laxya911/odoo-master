@@ -2,19 +2,19 @@
 
 import { useState, useCallback } from 'react';
 import { Product } from '@/lib/types';
-import { usePosSession } from './use-odoo';
+import { useSession } from '@/context/SessionContext';
 
 /**
  * Centralized hook to manage product configurator state and fetching.
  * Used by Menu, Home, and SignatureDish sections.
  */
 export function useProductConfigurator() {
-  const { isOpen: isPosOpen, loading: sessionLoading } = usePosSession();
+  const { session, isLoading: sessionLoading } = useSession();
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
 
   const openConfigurator = useCallback(async (product: Product) => {
-    if (!isPosOpen) return;
+    if (!session.isOpen) return;
 
     // --- Optimization: Use pre-fetched details if available ---
     if (
@@ -49,7 +49,7 @@ export function useProductConfigurator() {
     } finally {
       setIsLoadingDetails(false);
     }
-  }, [isPosOpen]);
+  }, [session.isOpen]);
 
   const closeConfigurator = useCallback(() => {
     setSelectedProduct(null);
@@ -61,7 +61,7 @@ export function useProductConfigurator() {
     isLoadingDetails,
     openConfigurator,
     closeConfigurator,
-    isPosOpen,
-    sessionLoading
+    isPosOpen: session.isOpen,
+    sessionLoading,
   };
 }
