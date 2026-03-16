@@ -28,13 +28,13 @@ export const CTA: React.FC<CTAProps> = ({ onNavigateMenu }) => {
                     </p>
                     <div className="flex flex-wrap justify-center gap-6">
                         <Link href="/booking?tab=party">
-                            <button className="px-12 py-6 bg-accent-gold text-neutral-900 font-bold rounded-full tracking-widest uppercase hover:bg-white transition-colors shadow-2xl">
+                            <button className="px-12 py-6 bg-accent-gold text-neutral-900 font-bold rounded-full tracking-widest uppercase hover:bg-white transition-colors shadow-2xl cursor-pointer">
                                 {t('book')}
                             </button>
                         </Link>
                         <button
-                            onClick={() => window.open('/party-menu.html', '_blank')}
-                            className="px-12 py-6 border border-white/10 text-white font-bold rounded-full tracking-widest uppercase hover:bg-white/5 transition-colors"
+                            onClick={() => window.open('/party-menu.pdf', '_blank')}
+                            className="px-12 py-6 border border-white/10 text-white font-bold rounded-full tracking-widest uppercase hover:bg-white/5 transition-colors cursor-pointer"
                         >
                             {t('pdf')}
                         </button>
