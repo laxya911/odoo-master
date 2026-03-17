@@ -29,11 +29,19 @@ export default function TrackLatestOrderPage() {
 
         const pollOrder = async () => {
             try {
-                const res = await fetch(`/api/track/latest?email=${encodeURIComponent(user.email)}`);
+                const searchParams = new URLSearchParams(window.location.search);
+                const urlCreatedAt = searchParams.get('created_at');
+                const createdAfter = urlCreatedAt || sessionStorage.getItem('checkout_initiated_at') || '';
+                
+                const res = await fetch(`/api/track/latest?email=${encodeURIComponent(user.email)}&created_after=${encodeURIComponent(createdAfter)}`);
                 if (res.ok) {
                     const order = await res.json();
                     if (order.id) {
                         setStatus('found');
+                        // Clear checkout persistence
+                        sessionStorage.removeItem('checkout_initiated_at');
+                        sessionStorage.removeItem('checkout_session_id');
+                        
                         setTimeout(() => router.push(`/track/${order.id}`), 1000);
                         return true;
                     }

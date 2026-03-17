@@ -2,11 +2,13 @@ import { PaymentProvider, PaymentProviderType } from './types';
 import { odooCall } from '@/lib/odoo-client';
 
 export async function getPaymentProvider(type: PaymentProviderType): Promise<PaymentProvider> {
+    console.log(`[factory] Fetching provider for: ${type}`);
     if (type === 'stripe') {
         const providers = await odooCall<any[]>('payment.provider', 'search_read', {
             domain: [['code', '=', 'stripe'], ['state', 'in', ['enabled', 'test']]],
             fields: ['id', 'stripe_secret_key'],
         });
+        console.log(`[factory] Providers found: ${providers?.length || 0}`);
         const secretKey = providers?.[0]?.stripe_secret_key;
         if (!secretKey) throw new Error('Stripe secret key not configured in Odoo');
 
@@ -27,11 +29,13 @@ export async function getPaymentProvider(type: PaymentProviderType): Promise<Pay
 }
 
 export async function getWebhookSecret(type: PaymentProviderType): Promise<string> {
+    console.log(`[factory] Fetching webhook secret for: ${type}`);
     if (type === 'stripe') {
         const providers = await odooCall<any[]>('payment.provider', 'search_read', {
             domain: [['code', '=', 'stripe'], ['state', 'in', ['enabled', 'test']]],
             fields: ['id', 'stripe_secret_key', 'stripe_webhook_secret'],
         });
+        console.log(`[factory] Secrets fetched. Provider count: ${providers?.length || 0}`);
         const secret = providers?.[0]?.stripe_webhook_secret;
         if (!secret) throw new Error('Stripe webhook secret not configured in Odoo');
         return secret;
