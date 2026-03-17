@@ -57,7 +57,7 @@ export async function odooCall<T>(
   console.log(`[odooCall] Request: POST ${url}`)
 
   // Support an abortable fetch with a default timeout to avoid long hangs
-  const timeoutMs = Number(process.env.ODOO_CALL_TIMEOUT_MS || 10000)
+  const timeoutMs = Number(process.env.ODOO_CALL_TIMEOUT_MS || 30000)
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
 

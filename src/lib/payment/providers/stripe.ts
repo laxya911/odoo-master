@@ -2,6 +2,7 @@ import Stripe from 'stripe';
 import { PaymentProvider, CheckoutSessionResponse, WebhookResult } from '../types';
 import { CreatePaymentRequest, OrderPayload, OrderLineItem } from '@/lib/types';
 import { calculateOrderTotal, getCompanyCurrency, toSmallestUnit } from '@/lib/odoo-order-utils';
+import { logToFile } from '@/lib/debug-logger';
 
 export class StripeAdapter implements PaymentProvider {
     private stripe: Stripe;
@@ -20,6 +21,11 @@ export class StripeAdapter implements PaymentProvider {
         const orderLines = expandCartItems(body.cart.items);
         const { amount_total, lines: processedLines } = await calculateOrderTotal(orderLines);
         const currency = await getCompanyCurrency();
+
+        // Generate Odoo-friendly UTC format: YYYY-MM-DD HH:MM:SS
+        const now = new Date();
+        const pad = (num: number) => num.toString().padStart(2, '0');
+        const odooTimestamp = `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())} ${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())}`;
         
         // Stripe Customer
         let customerId: string | undefined;
@@ -57,7 +63,8 @@ export class StripeAdapter implements PaymentProvider {
             zip: body.customer.zip || '',
             notes: body.customer_note || '',
             line_count: processedLines.length.toString(),
-            provider: 'stripe'
+            provider: 'stripe',
+            created_at: odooTimestamp
         };
 
         processedLines.forEach((line, index) => {
@@ -91,7 +98,7 @@ export class StripeAdapter implements PaymentProvider {
             ],
             mode: 'payment',
             customer: customerId,
-            success_url: `${origin}/track/latest?success=true&session_id={CHECKOUT_SESSION_ID}`,
+            success_url: `${origin}/track/latest?success=true&session_id={CHECKOUT_SESSION_ID}&created_at=${encodeURIComponent(odooTimestamp)}`,
             cancel_url: `${origin}/cart?canceled=true`,
             metadata: metadata,
             payment_intent_data: {
@@ -168,6 +175,7 @@ export class StripeAdapter implements PaymentProvider {
             };
         }
 
+        logToFile(`[stripe] Unhandled event type: ${event.type}`);
         return { success: false, error: `Unhandled event type: ${event.type}`, providerReference: '' };
     }
 }

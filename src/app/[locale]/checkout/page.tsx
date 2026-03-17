@@ -56,26 +56,36 @@ export default function CheckoutPage() {
         try {
             // If card, redirect to Stripe. If cash, go direct (or to a specialized flow).
             if (paymentMethod === 'card') {
-                const response = await fetch('/api/stripe/checkout-session', {
+                const response = await fetch('/api/payment/create-session', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        orderLines: items.map(item => ({
-                            product_id: item.product.id,
-                            quantity: item.quantity,
-                            list_price: item.product.list_price,
-                            notes: item.notes || ''
-                        })),
+                        cart: {
+                            items: items,
+                            total: total,
+                            subtotal: total
+                        },
                         customer: {
                             ...address,
                             name: user?.name || 'Guest',
                             email: user?.email || 'guest@example.com',
-                        }
+                        },
+                        orderType: 'delivery', // Default to delivery
+                        customer_note: ''
                     })
                 });
 
                 const data = await response.json();
                 if (data.url) {
+                    // Store checkout info for tracking race condition fix
+                    // Use Odoo-friendly UTC format: YYYY-MM-DD HH:MM:SS
+                    const now = new Date();
+                    const pad = (num: number) => num.toString().padStart(2, '0');
+                    const odooTimestamp = `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())} ${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())}`;
+                    
+                    sessionStorage.setItem('checkout_initiated_at', odooTimestamp);
+                    sessionStorage.setItem('checkout_session_id', data.sessionId || '');
+                    
                     window.location.href = data.url; // Redirect to Stripe
                     return;
                 } else {
