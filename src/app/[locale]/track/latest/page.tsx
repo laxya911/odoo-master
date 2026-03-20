@@ -31,9 +31,10 @@ export default function TrackLatestOrderPage() {
             try {
                 const searchParams = new URLSearchParams(window.location.search);
                 const urlCreatedAt = searchParams.get('created_at');
+                const sessionId = searchParams.get('session_id');
                 const createdAfter = urlCreatedAt || sessionStorage.getItem('checkout_initiated_at') || '';
                 
-                const res = await fetch(`/api/track/latest?email=${encodeURIComponent(user.email)}&created_after=${encodeURIComponent(createdAfter)}`);
+                const res = await fetch(`/api/track/latest?email=${encodeURIComponent(user.email)}&created_after=${encodeURIComponent(createdAfter)}&session_id=${sessionId || ''}`);
                 if (res.ok) {
                     const order = await res.json();
                     if (order.id) {

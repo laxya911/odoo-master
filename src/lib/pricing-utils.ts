@@ -20,19 +20,16 @@ export function calculateItemPricing(
   product: Product,
   meta: CartItemMeta | undefined,
   taxesMap: Record<number, { id: number; name: string; amount: number; price_include: boolean }>,
-  defaultTaxId: number | null
+  defaultTaxId: number | null,
+  currency: { name: string; decimal_places: number } = { name: 'INR', decimal_places: 2 }
 ): PricingResult {
+  const dp = currency.decimal_places
+
   let unitBasePrice = product.list_price || 0
 
   // 1. Add top-level attributes
-  if (meta?.attribute_value_ids) {
-    meta.attribute_value_ids.forEach(vid => {
-      // Find the value in the product attributes to get its price_extra
-      product.attributes?.forEach(attr => {
-        const val = attr.values.find(v => v.id === vid)
-        if (val) unitBasePrice += (val.price_extra || 0)
-      })
-    })
+  if (meta?.attribute_price_extra) {
+    unitBasePrice += meta.attribute_price_extra
   }
 
   // 2. Add combo selections
@@ -54,8 +51,6 @@ export function calculateItemPricing(
   let applicableTaxIds: number[] = []
   if (Array.isArray(product.taxes_id) && product.taxes_id.length > 0) {
     applicableTaxIds = product.taxes_id
-  } else if (defaultTaxId) {
-    applicableTaxIds = [defaultTaxId]
   }
 
   let totalIncludedRate = 0
@@ -75,13 +70,16 @@ export function calculateItemPricing(
   })
 
   const finalInclusivePrice = baseTotal * (1 + totalTaxRate)
-  const roundedPrice = Math.round(finalInclusivePrice)
-  const roundedTax = Math.round(baseTotal * totalTaxRate)
+  
+  // Dynamic rounding based on currency.decimal_places
+  const roundedPrice = Number(finalInclusivePrice.toFixed(dp))
+  const roundedTax = Number((baseTotal * totalTaxRate).toFixed(dp))
+  const roundedNet = Number(baseTotal.toFixed(dp))
 
   return {
     unitPrice: roundedPrice,
     totalPaid: roundedPrice,
     totalTax: roundedTax,
-    netAmount: Math.round(baseTotal)
+    netAmount: roundedNet
   }
 }

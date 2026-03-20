@@ -9,6 +9,7 @@ interface ProductContextType {
     tags: Record<number, { id: number; name: string; color?: number }>
     taxes: Record<number, { id: number; name: string; amount: number; price_include: boolean }>
     defaultTaxId: number | null
+    currency: { name: string; decimal_places: number }
     loading: boolean
     error: Error | null
     refreshProducts: () => Promise<void>
@@ -21,6 +22,7 @@ const ProductContext = createContext<ProductContextType>({
     tags: {},
     taxes: {},
     defaultTaxId: null,
+    currency: { name: 'jpy', decimal_places: 0 },
     loading: true,
     error: null,
     refreshProducts: async () => { },
@@ -33,6 +35,7 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
     const [tags, setTags] = useState<Record<number, { id: number; name: string; color?: number }>>({})
     const [taxes, setTaxes] = useState<Record<number, { id: number; name: string; amount: number; price_include: boolean }>>({})
     const [defaultTaxId, setDefaultTaxId] = useState<number | null>(null)
+    const [currency, setCurrency] = useState<{ name: string; decimal_places: number }>({ name: 'jpy', decimal_places: 0 })
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<Error | null>(null)
 
@@ -51,9 +54,11 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
                         if (data.tags) setTags(data.tags)
                         if (data.taxes) setTaxes(data.taxes)
                         if (data.defaultTaxId !== undefined) setDefaultTaxId(data.defaultTaxId)
+                        if (data.currency) setCurrency(data.currency)
                         if (data.meta) {
                             if (data.meta.categories) setCategories(data.meta.categories)
                             if (data.meta.defaultTaxId !== undefined) setDefaultTaxId(data.meta.defaultTaxId)
+                            if (data.meta.currency) setCurrency(data.meta.currency)
                         }
                         setLoading(false)
                         return
@@ -85,9 +90,11 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
             if (data.tags) setTags(data.tags)
             if (data.taxes) setTaxes(data.taxes)
             if (data.defaultTaxId !== undefined) setDefaultTaxId(data.defaultTaxId)
+            if (data.currency) setCurrency(data.currency)
             if (data.meta) {
                 if (data.meta.categories) setCategories(data.meta.categories)
                 if (data.meta.defaultTaxId !== undefined) setDefaultTaxId(data.meta.defaultTaxId)
+                if (data.meta.currency) setCurrency(data.meta.currency)
             }
 
             // Update cache
@@ -110,8 +117,9 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
         let applicableTaxIds = product.taxes_id || []
 
         // --- Default Tax Fallback ---
+        // CAUTION: Only apply fallback if we are sure the product isn't already tax-inclusive
         if (applicableTaxIds.length === 0 && defaultTaxId) {
-            applicableTaxIds = [defaultTaxId]
+            // applicableTaxIds = [defaultTaxId] // Disabling this fallback as it often causes mismatches with POS Fiscal Positions
         }
 
         // 1. Identify already included taxes
@@ -133,8 +141,8 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
 
         const finalPrice = preTaxBase * (1 + totalTaxRate)
 
-        // JPY Rounding (0 decimals)
-        return Math.round(finalPrice)
+        // Support dynamic decimal places from Odoo currency settings
+        return Number(finalPrice.toFixed(currency.decimal_places))
     }
 
     useEffect(() => {
@@ -147,11 +155,12 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
         tags,
         taxes,
         defaultTaxId,
+        currency,
         loading,
         error,
         refreshProducts: () => fetchProducts(true),
         getInclusivePrice
-    }), [products, categories, tags, taxes, defaultTaxId, loading, error])
+    }), [products, categories, tags, taxes, defaultTaxId, currency, loading, error])
 
     return (
         <ProductContext.Provider value={value}>

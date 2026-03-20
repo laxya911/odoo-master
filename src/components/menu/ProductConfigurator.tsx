@@ -48,6 +48,34 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
     Record<string, number[]>
   >({})
 
+  // Initialize standalone product default attributes
+  React.useEffect(() => {
+    if (attributes && attributes.length > 0) {
+      setConfigSelections((prev) => {
+        // Only initialize if completely empty (on mount)
+        if (Object.keys(prev).length > 0) return prev;
+        
+        const initialSelections: Record<string, number[]> = {};
+        attributes.forEach((attr) => {
+            if (attr.values && attr.values.length > 0) {
+                // Pre-select the first value by default if it's required/radio
+                // However, avoid pre-selecting optional extras that cost money
+                const firstVal = attr.values[0];
+                const displayType = attr.display_type || 'radio';
+                const isSingleChoice = displayType === 'radio' || displayType === 'select';
+                
+                // If it's a single choice (e.g., picking a side or size) and doesn't cost extra,
+                // or if it's a structural requirement, pre-select it. Avoid auto-selecting paid extras.
+                if (isSingleChoice && !(firstVal.price_extra && firstVal.price_extra > 0)) {
+                  initialSelections[attr.id] = [firstVal.id];
+                }
+            }
+        });
+        return initialSelections;
+      });
+    }
+  }, [attributes]);
+
   // Track qty per product in each combo line
   // Key: lineId, Value: Record<productId, quantity>
   const [comboItemQuantities, setComboItemQuantities] = useState<
@@ -308,8 +336,18 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
       // The total config including extras will be reflected in the final order line.
     }
 
+    // Calculate total attribute extra price for the parent item
+    let attributePriceExtra = 0
+    attribute_value_ids.forEach(vid => {
+      product.attributes?.forEach(attr => {
+        const val = attr.values.find(v => v.id === vid)
+        if (val) attributePriceExtra += (val.price_extra || 0)
+      })
+    })
+
     addToCart(productWithPrice, 1, {
       attribute_value_ids,
+      attribute_price_extra: attributePriceExtra,
       combo_selections,
       notes: configInstructions.trim() || undefined,
     })
@@ -397,13 +435,13 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                                 const current = prev[attr.id] || []
                                 // Logic for single selection (radio) vs multi
                                 // Odoo display_type: 'radio', 'select', 'color'
-                                const display_type =
-                                  attr.display_type || 'radio'
-                                const isSingle = !['checkbox', 'multi', 'multi_checkbox'].includes(display_type)
+                                const display_type = attr.display_type || 'radio'
+                                const isSingle = !['checkbox', 'multi', 'multi_checkbox', 'multi_select'].includes(display_type)
 
-
-                                if (isSingle)
+                                if (isSingle) {
                                   return { ...prev, [attr.id]: [val.id] }
+                                }
+
 
                                 return {
                                   ...prev,
@@ -635,8 +673,28 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                                       onClick={() => {
                                         setComboItemAttributes(prev => {
                                           const key = `${line.id}-${selectedPid}-attr`
-                                          const current = prev[key] || {}
-                                          return { ...prev, [key]: { ...current, [attr.id]: [val.id] } }
+                                          const currentConfig = prev[key] || {}
+                                          const currentAttrSels = currentConfig[attr.id] || []
+                                          
+                                          const display_type = attr.display_type || 'radio'
+                                          const isSingle = !['checkbox', 'multi', 'multi_checkbox', 'multi_select'].includes(display_type)
+
+                                          let newAttrSels: number[]
+                                          if (isSingle) {
+                                            newAttrSels = [val.id]
+                                          } else {
+                                            newAttrSels = currentAttrSels.includes(val.id)
+                                              ? currentAttrSels.filter(id => id !== val.id)
+                                              : [...currentAttrSels, val.id]
+                                          }
+
+                                          return { 
+                                            ...prev, 
+                                            [key]: { 
+                                              ...currentConfig, 
+                                              [attr.id]: newAttrSels 
+                                            } 
+                                          }
                                         })
                                       }}
                                       className={cn(
@@ -685,8 +743,20 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                                       onClick={() => {
                                         setNestedSelections(prev => {
                                           const key = `${line.id}-${selectedPid}`
-                                          const current = prev[key] || {}
-                                          return { ...prev, [key]: { ...current, [subLine.id]: [subProd.id] } }
+                                          const currentConfig = prev[key] || {}
+                                          const currentSels = currentConfig[subLine.id] || []
+                                          
+                                          // Simple multi-select logic for nested combos:
+                                          // If it's already selected, and there are more than 1 current selection, toggle it off.
+                                          // Otherwise, add it. (Simplified since we don't have full multi-quant logic here yet)
+                                          let newSels: number[]
+                                          if (currentSels.includes(subProd.id)) {
+                                            newSels = currentSels.filter(id => id !== subProd.id)
+                                          } else {
+                                            newSels = [...currentSels, subProd.id]
+                                          }
+                                          
+                                          return { ...prev, [key]: { ...currentConfig, [subLine.id]: newSels } }
                                         })
                                       }}
                                       className={cn(

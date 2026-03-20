@@ -245,45 +245,50 @@ export default function DynamicTrackOrderPage() {
                         <ScrollArea className="h-[40vh] min-h-[300px] w-full">
                             <CardContent className="p-8 pb-4">
                                 <div className="space-y-5">
-                                    {order.line_items?.map((item: { qty: number; full_product_name?: string; product_id?: [number, string]; note?: string; customer_note?: string; price_subtotal_incl: number }, idx: number) => (
-                                        <div key={idx} className="flex justify-between items-start gap-4">
-                                            <div className="space-y-1 flex-1">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="w-5 h-5 rounded-md bg-accent-gold text-primary text-[10px] font-black flex items-center justify-center">{item.qty}×</span>
-                                                    <p className="text-sm font-bold text-neutral-900 leading-tight">
-                                                        {item.full_product_name ? translate(item.full_product_name) : (item.product_id ? translate(item.product_id[1]) : t('unknownProduct'))}
-                                                    </p>
-                                                </div>
-                                                {(item.customer_note || item.note) && (() => {
-                                                    // Prefer customer_note (plain text). Fall back to parsing note (JSON format).
-                                                    let noteText = '';
-                                                    if (item.customer_note) {
-                                                        noteText = item.customer_note.replace(/^Note:\s*/i, '');
-                                                    } else if (item.note) {
-                                                        try {
-                                                            const parsed = JSON.parse(item.note);
-                                                            if (Array.isArray(parsed)) {
-                                                                noteText = parsed.map((n: any) => n.note || '').filter(Boolean).join(', ');
-                                                            } else {
-                                                                noteText = item.note;
-                                                            }
-                                                        } catch {
-                                                            // Not JSON — strip "Note: " prefix if present
-                                                            noteText = item.note.replace(/^Note:\s*/i, '');
-                                                        }
-                                                    }
-                                                    return noteText ? (
-                                                        <p className="text-[10px] text-neutral-500 uppercase tracking-tighter ml-7 mt-1 leading-relaxed whitespace-pre-line font-medium italic">
-                                                            {t('note')}: {noteText}
+                                    {order.line_items?.map((item: { qty: number; full_product_name?: string; product_id?: [number, string]; note?: string; customer_note?: string; price_subtotal_incl: number; combo_parent_id?: [number, string] }, idx: number) => {
+                                        const isChild = !!item.combo_parent_id;
+                                        return (
+                                            <div key={idx} className={`flex justify-between items-start gap-4 ${isChild ? 'ml-6 border-l-2 border-neutral-100 pl-4 py-1' : ''}`}>
+                                                <div className="space-y-1 flex-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`w-5 h-5 rounded-md text-[10px] font-black flex items-center justify-center ${isChild ? 'bg-neutral-100 text-neutral-500' : 'bg-accent-gold text-primary'}`}>
+                                                            {item.qty}×
+                                                        </span>
+                                                        <p className={`text-sm font-bold leading-tight ${isChild ? 'text-neutral-600' : 'text-neutral-900'}`}>
+                                                            {item.full_product_name ? translate(item.full_product_name) : (item.product_id ? translate(item.product_id[1]) : t('unknownProduct'))}
                                                         </p>
-                                                    ) : null;
-                                                })()}
+                                                    </div>
+                                                    {(item.customer_note || item.note) && (() => {
+                                                        // Prefer customer_note (plain text). Fall back to parsing note (JSON format).
+                                                        let noteText = '';
+                                                        if (item.customer_note) {
+                                                            noteText = item.customer_note.replace(/^Note:\s*/i, '');
+                                                        } else if (item.note) {
+                                                            try {
+                                                                const parsed = JSON.parse(item.note);
+                                                                if (Array.isArray(parsed)) {
+                                                                    noteText = parsed.map((n: any) => n.note || '').filter(Boolean).join(', ');
+                                                                } else {
+                                                                    noteText = item.note;
+                                                                }
+                                                            } catch {
+                                                                // Not JSON — strip "Note: " prefix if present
+                                                                noteText = item.note.replace(/^Note:\s*/i, '');
+                                                            }
+                                                        }
+                                                        return noteText ? (
+                                                            <p className="text-[10px] text-neutral-500 uppercase tracking-tighter ml-7 mt-1 leading-relaxed whitespace-pre-line font-medium italic">
+                                                                {t('note')}: {noteText}
+                                                            </p>
+                                                        ) : null;
+                                                    })()}
+                                                </div>
+                                                <span className={`text-sm font-bold pr-2 ${isChild ? 'text-neutral-500' : 'text-neutral-900'}`}>
+                                                    {formatPrice(item.price_subtotal_incl)}
+                                                </span>
                                             </div>
-                                            <span className="text-sm font-bold text-neutral-900 pr-2">
-                                                {formatPrice(item.price_subtotal_incl)}
-                                            </span>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             </CardContent>
                         </ScrollArea>

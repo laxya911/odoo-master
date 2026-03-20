@@ -234,7 +234,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     )
   }, [])
 
-  const { taxes, defaultTaxId } = useProducts()
+  const { taxes, defaultTaxId, currency } = useProducts()
 
   const getCartBreakdown = useCallback(() => {
     let total = 0
@@ -243,7 +243,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
     cartItems.forEach((item) => {
       const { totalPaid: lineTotal, totalTax: lineTax, netAmount: lineNet } =
-        calculateItemPricing(item.product, item.meta, taxes, defaultTaxId)
+        calculateItemPricing(item.product, item.meta, taxes, defaultTaxId, currency)
 
       total += lineTotal * item.quantity
       tax += lineTax * item.quantity

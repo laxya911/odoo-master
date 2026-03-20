@@ -30,7 +30,7 @@ export default function CartPage() {
   const commonT = useTranslations('common')
   const { translate } = useDynamicTranslation()
   const { formatPrice } = useCompany()
-  const { taxes, defaultTaxId } = useProducts()
+  const { products, taxes, defaultTaxId, currency } = useProducts()
   const { session } = useSession()
   const { isAuthenticated } = useAuth()
   const router = useRouter()
@@ -109,7 +109,7 @@ export default function CartPage() {
             {/* Cart Items */}
             <div className="lg:col-span-2 space-y-4">
               {cartItems.map((item) => {
-                const pricing = calculateItemPricing(item.product, item.meta, taxes, defaultTaxId)
+                const pricing = calculateItemPricing(item.product, item.meta, taxes, defaultTaxId, currency)
                 return (
                   <div
                     key={item.id}
@@ -158,6 +158,78 @@ export default function CartPage() {
                               </span>
                             ) : null
                           })}
+                        </div>
+                      )}
+
+                      {/* Odoo 19: Nested Combo Selections Display */}
+                      {item.meta?.combo_selections && item.meta.combo_selections.length > 0 && (
+                        <div className="mt-2 space-y-1.5 pl-2 border-l border-white/5">
+                          {item.meta.combo_selections.map((selection, sIdx) => (
+                             <div key={sIdx} className="space-y-1">
+                                {selection.product_ids.map((pid: number, pIdx: number) => {
+                                   const comboItemAttrs = selection.combo_item_attributes?.[pIdx] || []
+                                   const subSels = selection.sub_selections?.[pIdx] || []
+                                   
+                                   // Find the product globally if not in combo line
+                                   let productName = `Product #${pid}`
+                                   const comboLine = item.product.details?.combo_lines?.find((cl: any) => cl.id === selection.combo_id)
+                                   let comboProd = comboLine?.products?.find((p: any) => p.id === pid)
+                                   
+                                   // If not in combo line metadata, look up in global products
+                                   if (!comboProd) {
+                                      comboProd = products.find(p => p.id === pid)
+                                   }
+
+                                   if (comboProd) {
+                                      productName = translate(comboProd.name)
+                                   }
+
+                                   return (
+                                      <div key={`${pid}-${pIdx}`} className="text-[11px] text-white/60">
+                                         <span className="font-medium text-white/80">• {productName}</span>
+                                         {/* Child Attributes (Sides/Extras) */}
+                                         {comboItemAttrs.length > 0 && (
+                                            <div className="pl-3 mt-0.5 flex flex-wrap gap-1">
+                                               {comboItemAttrs.map((vid: number) => {
+                                                  let attrName = ''
+                                                  
+                                                  // 1. Try combo product details (if we have them)
+                                                  comboProd?.details?.attributes?.forEach((attr: any) => {
+                                                     const v = attr.values.find((va: any) => va.id === vid)
+                                                     if (v) attrName = translate(v.name)
+                                                  })
+
+                                                  // 2. Try global lookup if still not found
+                                                  if (!attrName) {
+                                                     products.forEach(p => {
+                                                        p.details?.attributes?.forEach((attr: any) => {
+                                                           const v = attr.values.find((va: any) => va.id === vid)
+                                                           if (v) attrName = translate(v.name)
+                                                        })
+                                                     })
+                                                  }
+
+                                                  return attrName ? (
+                                                     <span key={vid} className="text-[10px] text-accent-gold/80 italic font-medium">
+                                                        ({attrName})
+                                                     </span>
+                                                  ) : null
+                                               })}
+                                            </div>
+                                         )}
+                                         
+                                         {/* Recursive Sub-selections (for nested combos) */}
+                                         {subSels.length > 0 && (
+                                            <div className="pl-3 mt-1 space-y-1">
+                                               {/* We'd normally recurse here if we had a component, but for cart 2 levels usually enough */}
+                                               {/* If needed, we can extract this to a component. */}
+                                            </div>
+                                         )}
+                                      </div>
+                                   )
+                                })}
+                             </div>
+                          ))}
                         </div>
                       )}
 
