@@ -54,22 +54,22 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
       setConfigSelections((prev) => {
         // Only initialize if completely empty (on mount)
         if (Object.keys(prev).length > 0) return prev;
-        
+
         const initialSelections: Record<string, number[]> = {};
         attributes.forEach((attr) => {
-            if (attr.values && attr.values.length > 0) {
-                // Pre-select the first value by default if it's required/radio
-                // However, avoid pre-selecting optional extras that cost money
-                const firstVal = attr.values[0];
-                const displayType = attr.display_type || 'radio';
-                const isSingleChoice = displayType === 'radio' || displayType === 'select';
-                
-                // If it's a single choice (e.g., picking a side or size) and doesn't cost extra,
-                // or if it's a structural requirement, pre-select it. Avoid auto-selecting paid extras.
-                if (isSingleChoice && !(firstVal.price_extra && firstVal.price_extra > 0)) {
-                  initialSelections[attr.id] = [firstVal.id];
-                }
+          if (attr.values && attr.values.length > 0) {
+            // Pre-select the first value by default if it's required/radio
+            // However, avoid pre-selecting optional extras that cost money
+            const firstVal = attr.values[0];
+            const displayType = attr.display_type || 'radio';
+            const isSingleChoice = displayType === 'radio' || displayType === 'select';
+
+            // If it's a single choice (e.g., picking a side or size) and doesn't cost extra,
+            // or if it's a structural requirement, pre-select it. Avoid auto-selecting paid extras.
+            if (isSingleChoice && !(firstVal.price_extra && firstVal.price_extra > 0)) {
+              initialSelections[attr.id] = [firstVal.id];
             }
+          }
         });
         return initialSelections;
       });
@@ -675,7 +675,7 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                                           const key = `${line.id}-${selectedPid}-attr`
                                           const currentConfig = prev[key] || {}
                                           const currentAttrSels = currentConfig[attr.id] || []
-                                          
+
                                           const display_type = attr.display_type || 'radio'
                                           const isSingle = !['checkbox', 'multi', 'multi_checkbox', 'multi_select'].includes(display_type)
 
@@ -688,12 +688,12 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                                               : [...currentAttrSels, val.id]
                                           }
 
-                                          return { 
-                                            ...prev, 
-                                            [key]: { 
-                                              ...currentConfig, 
-                                              [attr.id]: newAttrSels 
-                                            } 
+                                          return {
+                                            ...prev,
+                                            [key]: {
+                                              ...currentConfig,
+                                              [attr.id]: newAttrSels
+                                            }
                                           }
                                         })
                                       }}
@@ -745,7 +745,7 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                                           const key = `${line.id}-${selectedPid}`
                                           const currentConfig = prev[key] || {}
                                           const currentSels = currentConfig[subLine.id] || []
-                                          
+
                                           // Simple multi-select logic for nested combos:
                                           // If it's already selected, and there are more than 1 current selection, toggle it off.
                                           // Otherwise, add it. (Simplified since we don't have full multi-quant logic here yet)
@@ -755,7 +755,7 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                                           } else {
                                             newSels = [...currentSels, subProd.id]
                                           }
-                                          
+
                                           return { ...prev, [key]: { ...currentConfig, [subLine.id]: newSels } }
                                         })
                                       }}

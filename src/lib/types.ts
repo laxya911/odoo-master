@@ -167,6 +167,7 @@ export type PosOrder = OdooRecord & {
   amount_total: number
   state: 'draft' | 'cancel' | 'paid' | 'done' | 'invoiced'
   pos_reference?: string
+  delivery_status?: 'received' | 'preparing' | 'ready' | 'delivering' | 'delivered'
 }
 
 export type PosConfig = OdooRecord & {

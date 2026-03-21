@@ -115,6 +115,7 @@
         "kitchen": "キッチン",
         "packing": "梱包中",
         "out": "配達中",
+        "on_the_way": "配送中",
         "arrived": "到着",
         "destination": "お届け先",
         "masterChef": "シェフ アルジュン・ラム",
@@ -214,6 +215,7 @@
         "suggestedForYou": "あなたへのおすすめ",
         "productNotFound": "商品が見つかりません",
         "productNotFoundDesc": "お探しの商品は存在しないか、現在取り扱いがございません。",
+        "noImageAvailable": "自慢の一皿",
         "unknownProduct": "不明な商品"
     },
     "booking": {

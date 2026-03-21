@@ -20,7 +20,7 @@ export async function GET(
     // 1. Fetch Order
     const orders = await odooCall<PosOrder[]>('pos.order', 'search_read', {
       domain: [['id', '=', id]],
-      fields: ['id', 'name', 'date_order', 'amount_total', 'amount_tax', 'state', 'partner_id', 'lines', 'pos_reference', 'account_move'],
+      fields: ['id', 'name', 'date_order', 'amount_total', 'amount_tax', 'state', 'partner_id', 'lines', 'pos_reference', 'account_move', 'delivery_status'],
       limit: 1,
     })
 

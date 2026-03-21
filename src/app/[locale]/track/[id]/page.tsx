@@ -50,28 +50,48 @@ export default function DynamicTrackOrderPage() {
             clearCart();
         }
 
-        const fetchOrder = async () => {
+        const fetchOrder = async (isPoll = false) => {
             try {
                 const res = await fetch(`/api/odoo/restaurant/orders/${params.id}`);
                 if (!res.ok) throw new Error('Order not found');
                 const data = await res.json();
                 setOrder(data.order);
 
-                // For now, if order is fully paid/done in Odoo, show high progress
-                if (data.order.state === 'paid' || data.order.state === 'done') {
+                // Map Odoo delivery_status to frontend OrderStatus
+                if (data.order && data.order.delivery_status) {
+                    const odooStatus = data.order.delivery_status;
+                    const mappedStatus = odooStatus === 'on_the_way' ? 'delivering' : odooStatus;
+                    setCurrentStatus(mappedStatus as OrderStatus);
+                    
+                    // Update progress based on status
+                    const statusIndex = STATUS_STEPS.findIndex(s => s.status === mappedStatus);
+                    if (statusIndex !== -1) {
+                        const newProgress = 15 + (statusIndex * 21.25);
+                        setProgress(Math.min(Math.round(newProgress), 100));
+                    }
+                } else if (data.order && (data.order.state === 'paid' || data.order.state === 'done')) {
+                    // Fallback to basic state mapping if delivery_status is missing
                     setCurrentStatus('delivered');
                     setProgress(100);
                 }
+                
+                if (!isPoll) setLoading(false);
             } catch (err: unknown) {
                 const error = err as Error;
-                setError(error.message);
-            } finally {
-                setLoading(false);
+                if (!isPoll) {
+                    setError(error.message);
+                    setLoading(false);
+                }
             }
         };
 
-        if (params.id) fetchOrder();
-    }, [params.id]);
+        if (params.id) {
+            fetchOrder();
+            // Start polling every 10 seconds for real-time updates
+            const pollInterval = setInterval(() => fetchOrder(true), 10000);
+            return () => clearInterval(pollInterval);
+        }
+    }, [params.id, clearCart]);
 
 
     if (loading) {
