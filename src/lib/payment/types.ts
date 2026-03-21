@@ -25,6 +25,10 @@ export interface PaymentProvider {
         signature: string, 
         secret: string
     ): Promise<WebhookResult>;
+
+    retrieveSession(
+        sessionId: string
+    ): Promise<WebhookResult>;
 }
 
 export type PaymentProviderType = 'stripe' | 'razorpay';

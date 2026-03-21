@@ -76,6 +76,7 @@ export type PosCategory = {
 
 export type CartItemMeta = {
   attribute_value_ids?: number[]
+  attribute_price_extra?: number
   combo_selections?: Array<{
     combo_id: number
     product_ids: number[]
@@ -99,6 +100,9 @@ export type CartItem = {
 }
 
 export type OrderLineItem = {
+  cid?: string // Client-side unique ID
+  parent_cid?: string // Reference to parent's cid (internal)
+  parent_line_id?: string // Odoo 19 POS field for linking to parent cid
   product_id: number
   quantity: number
   list_price: number

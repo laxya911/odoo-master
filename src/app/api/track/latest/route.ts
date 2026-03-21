@@ -5,14 +5,21 @@ import { OdooRecord, PosOrder } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
+// In-memory lock to prevent multiple concurrent fulfillment triggers for the same session
+const activeFulfillments = new Set<string>();
+
 export async function GET(req: NextRequest) {
   try {
     const searchParams = req.nextUrl.searchParams;
     const email = searchParams.get('email');
-    const createdAfter = searchParams.get('created_after');
+    const sessionId = searchParams.get('session_id');
 
     if (!email) {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 });
+    }
+
+    if (!sessionId) {
+      return NextResponse.json({ error: 'Session ID is required' }, { status: 400 });
     }
 
     // 1. Find the partner
@@ -28,34 +35,85 @@ export async function GET(req: NextRequest) {
 
     const partnerId = partners[0].id;
 
-    // 2. Find the latest POS order for this partner
-    const domain: any[] = [['partner_id', '=', partnerId]];
-    if (createdAfter) {
-      // Subtract 120 seconds to account for clock drift between server/client
-      const baseDate = new Date(createdAfter.replace(' ', 'T') + 'Z'); // Convert to ISO-like for JS
-      const bufferedDate = new Date(baseDate.getTime() - 120 * 1000);
-      const pad = (num: number) => num.toString().padStart(2, '0');
-      const bufferedTimestamp = `${bufferedDate.getUTCFullYear()}-${pad(bufferedDate.getUTCMonth() + 1)}-${pad(bufferedDate.getUTCDate())} ${pad(bufferedDate.getUTCHours())}:${pad(bufferedDate.getUTCMinutes())}:${pad(bufferedDate.getUTCSeconds())}`;
+    // 2. Find the latest POS orders for this partner
+    const searchOrder = async () => {
+      const orders = await odooCall<PosOrder[]>('pos.order', 'search_read', {
+        domain: [['partner_id', '=', partnerId]],
+        fields: ['id', 'pos_reference', 'state', 'date_order', 'amount_total', 'unique_uuid'],
+        limit: 20,
+        order: 'date_order desc',
+      });
+
+      if (!orders || orders.length === 0) return [];
+
+      // A. Match by exact reference, suffix, or unique_uuid (Odoo 19 uses unique_uuid for Stripe refs)
+      const suffix = sessionId.slice(-8);
+      const match = orders.find(o => 
+        o.pos_reference === sessionId || 
+        o.pos_reference?.includes(suffix) ||
+        (o as any).unique_uuid === sessionId
+      );
       
-      domain.push(['date_order', '>=', bufferedTimestamp]);
-      logToFile(`[latest-poll] Querying after buffered timestamp: ${bufferedTimestamp} (Original: ${createdAfter})`);
+      if (match) {
+        console.log(`[latest-poll] Found exact match for sessionId ${sessionId}: ${match.id}`);
+        return [match];
+      }
+
+      // B. RELAXED FALLBACK (Only for generic searches without a specific session)
+      if (!sessionId) {
+        const latest = orders[0];
+        const orderDate = new Date(latest.date_order + 'Z');
+        const now = new Date();
+        const diffMinutes = (now.getTime() - orderDate.getTime()) / (1000 * 60);
+
+        if (diffMinutes < 2) {
+          console.log(`[latest-poll] No exact match, but latest order ${latest.id} is very recent (${diffMinutes.toFixed(1)}m). Returning as likely match.`);
+          return [latest];
+        }
+      }
+
+      console.log(`[latest-poll] No match found for sessionId ${sessionId}.`);
+      return [];
+    };
+
+    let orders = await searchOrder();
+
+    // 3. Sync Fallback: Trigger fulfillment if no order found AND not already in progress
+    if (!orders.length) {
+      if (activeFulfillments.has(sessionId)) {
+        console.log(`[latest-poll] Fulfillment already in progress for ${sessionId}.`);
+        return NextResponse.json({ status: 'processing', message: 'Fulfillment in progress' });
+      }
+
+      activeFulfillments.add(sessionId);
+      logToFile(`[latest-poll] Triggering recovery fulfillment for ${sessionId}...`);
+      
+      try {
+        const { getPaymentProvider } = await import('@/lib/payment/factory');
+        const { fulfillOdooOrder } = await import('@/lib/odoo-fulfillment');
+        
+        const provider = await getPaymentProvider('stripe');
+        const session = await provider.retrieveSession(sessionId);
+        
+        if (session.success && session.payload) {
+          await fulfillOdooOrder(session.payload, session.providerReference);
+          // Re-search after fulfillment
+          orders = await searchOrder();
+        }
+      } catch (e: any) {
+        logToFile(`[latest-poll] Recovery fulfillment failed: ${e.message}`);
+      } finally {
+        activeFulfillments.delete(sessionId);
+      }
     }
 
-    const orders = await odooCall<PosOrder[]>('pos.order', 'search_read', {
-      domain: domain,
-      fields: ['id', 'pos_reference', 'state', 'date_order'],
-      limit: 1,
-      order: 'date_order desc',
-    });
-
     if (!orders.length) {
-      return NextResponse.json({ error: 'No orders found' }, { status: 404 });
+      return NextResponse.json({ error: 'Order synchronization in progress...' }, { status: 404 });
     }
 
     return NextResponse.json(orders[0]);
 
   } catch (error: unknown) {
-    const err = error as Error;
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }

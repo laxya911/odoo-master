@@ -24,26 +24,24 @@ export async function fulfillOdooOrder(
     orderType,
   } = payload
 
-  // 0. IDEMPOTENCY CHECK: Ensure we don't process the same Stripe ID twice
-  if (stripePaymentIntentId) {
-    const shortId = stripePaymentIntentId.slice(-6)
-    console.log(`[Fulfillment] Checking for existing order with Stripe suffix: ${shortId}`)
-    const existingOrders = await odooCall<any[]>('pos.order', 'search_read', {
-      domain: [['name', 'ilike', `Online Order - ${shortId}`]],
-      fields: ['id', 'pos_reference', 'state', 'account_move'],
-      limit: 1,
-    })
+  // 1. Check if order already exists (Idempotency)
+  console.log(`[Fulfillment] Checking for existing order with unique_uuid: ${stripePaymentIntentId}`)
+  const existingOrders = await odooCall<PosOrder[]>('pos.order', 'search_read', {
+    domain: [['unique_uuid', '=', stripePaymentIntentId]],
+    fields: ['id', 'state', 'pos_reference', 'account_move', 'unique_uuid'],
+    limit: 1,
+  })
 
-    if (existingOrders.length > 0) {
-      const order = existingOrders[0]
-      console.log(`✅ [Fulfillment] Idempotency hit: Order already exists (ID: ${order.id}, Ref: ${order.pos_reference})`)
-      return {
-        orderId: order.id,
-        posReference: order.pos_reference,
-        state: order.state,
-        accountMoveName: Array.isArray(order.account_move) ? order.account_move[1] : '',
-        invoiceId: Array.isArray(order.account_move) ? order.account_move[0] : order.account_move
-      }
+  if (existingOrders.length > 0) {
+    const order = existingOrders[0]
+    console.log(`✅ [Fulfillment] Idempotency hit: Order already exists (ID: ${order.id}, UUID: ${order.unique_uuid})`)
+    logToFile(`[fulfillment] Idempotency hit for ${stripePaymentIntentId}: order ${order.id}`);
+    return {
+      orderId: order.id,
+      posReference: order.pos_reference,
+      state: order.state,
+      accountMoveName: Array.isArray(order.account_move) ? order.account_move[1] : '',
+      invoiceId: Array.isArray(order.account_move) ? order.account_move[0] : order.account_move
     }
   }
 
@@ -63,12 +61,8 @@ export async function fulfillOdooOrder(
 
   const session = activeSessions[0]
   const sessionId = session.id
-  // Support an abortable fetch with a default timeout to avoid long hangs
-  const timeoutMs = Number(process.env.ODOO_CALL_TIMEOUT_MS || 30000)
-  const controller = new AbortController()
   logToFile(`[fulfillment] Using opened POS Session: ${sessionId}`);
   const configId = session.config_id[0]
-  const userId = session.user_id ? session.user_id[0] : false
 
   // Directly fetch payment methods for this config
   const posConfig = await odooCall<any[]>('pos.config', 'read', {
@@ -78,80 +72,67 @@ export async function fulfillOdooOrder(
 
   const paymentMethodIds = posConfig[0].payment_method_ids
 
-  // 2. Map Payment Method (Map to 'Stripe' for online payments in Odoo 19)
-  let targetMethodName = 'Stripe'
-  if (paymentMethod === 'cash') targetMethodName = 'Cash'
-
-  console.log(
-    `[Fulfillment] Mapping payment method for name: ${targetMethodName}`,
-  )
-
-  // ODOO 19 CAUTION: Methods with is_online_payment=true cannot be used via add_payment
-  // without a pre-existing accounting transaction. Since we move funds externally via Stripe,
-  // we must map to an "Offline" (standard) Odoo POS method to clear the order record.
-  let paymentMethods = await odooCall<any[]>(
+  // 2. Map Payment Method (Dynamic lookup for 'Stripe' or 'Card')
+  // Fetch all payment methods for this config to log them and find the best match
+  const allMethods = await odooCall<any[]>(
     'pos.payment.method',
     'search_read',
     {
-      domain: [
-        ['id', 'in', paymentMethodIds],
-        ['name', 'ilike', targetMethodName],
-        ['is_online_payment', '=', false],
-      ],
-      fields: ['id', 'name', 'is_online_payment'],
-      limit: 1,
-    },
+      domain: [['id', 'in', paymentMethodIds]],
+      fields: ['id', 'name', 'is_cash_count', 'is_online_payment', 'use_payment_terminal'],
+    }
   )
 
-  if (!paymentMethods || paymentMethods.length === 0) {
-    console.warn(
-      `[Fulfillment] No standard (non-online) method named "${targetMethodName}" found.`,
-    )
-    // Fallback to any non-online, non-cash method (e.g. 'Card')
-    const fallback = await odooCall<any[]>(
-      'pos.payment.method',
-      'search_read',
-      {
-        domain: [
-          ['id', 'in', paymentMethodIds],
-          ['is_cash_count', '=', false],
-          ['is_online_payment', '=', false],
-        ],
-        fields: ['id', 'name', 'is_online_payment'],
-        limit: 1,
-      },
-    )
+  console.log('[Fulfillment] Available POS Payment Methods:', allMethods.map(m => `${m.name} (ID: ${m.id}, Online: ${m.is_online_payment})`).join(', '))
+  logToFile(`[fulfillment] Available POS Payment Methods: ${JSON.stringify(allMethods)}`);
 
-    if (fallback.length > 0) {
-      console.log(
-        `[Fulfillment] Falling back to standard method: ${fallback[0].name}`,
-      )
-      paymentMethods = fallback
-    } else {
-      // Last resort: use anything available
-      const anyMethod = await odooCall<any[]>(
-        'pos.payment.method',
-        'search_read',
-        {
-          domain: [['id', 'in', paymentMethodIds]],
-          fields: ['id', 'name', 'is_online_payment'],
-          limit: 1,
-        },
-      )
-      if (!anyMethod.length)
-        throw new Error('No suitable POS payment method found.')
-      paymentMethods = anyMethod
+  let selectedMethod: any = null;
+  const targetMethodName = paymentMethod === 'cash' ? 'Cash' : 'Stripe';
+
+  if (paymentMethod === 'cash') {
+    selectedMethod = allMethods.find(m => (m.name.toLowerCase().includes('cash') || m.is_cash_count) && !m.is_online_payment);
+  } else {
+    // IMPORTANT: In Odoo 17+, 'is_online_payment: true' methods REQUIRE a linked accounting transaction.
+    // Since we handle Stripe in Next.js, we MUST use an 'Offline' (Standard) method in Odoo to record the payment.
+    const offlineMethods = allMethods.filter(m => !m.is_online_payment);
+
+    // 1. Try to find an exactly named 'Stripe' offline method
+    selectedMethod = offlineMethods.find(m => m.name.toLowerCase() === 'stripe');
+    
+    // 2. Try to find an offline method that includes 'Stripe' in the name
+    if (!selectedMethod) {
+      selectedMethod = offlineMethods.find(m => m.name.toLowerCase().includes('stripe'));
+    }
+
+    // 3. Fallback to any 'Card' or 'Bank' offline method
+    if (!selectedMethod) {
+      selectedMethod = offlineMethods.find(m => 
+        !m.is_cash_count && 
+        (m.name.toLowerCase().includes('card') || m.name.toLowerCase().includes('bank'))
+      );
+    }
+
+    // 4. Last resort: use the first non-cash offline method
+    if (!selectedMethod) {
+      selectedMethod = offlineMethods.find(m => !m.is_cash_count);
     }
   }
 
-  const selectedMethod = paymentMethods[0]
+  if (!selectedMethod && allMethods.length > 0) {
+    selectedMethod = allMethods[0];
+  }
+
+  if (!selectedMethod) {
+    throw new Error('No valid payment method found for this POS config.')
+  }
+
   const paymentMethodId = selectedMethod.id as number
   console.log(
     `[Fulfillment] Final Payment Method: ${selectedMethod.name} (ID: ${paymentMethodId})`,
   )
-  if (selectedMethod.name !== targetMethodName) {
+  if (selectedMethod.name !== targetMethodName && !selectedMethod.name.toLowerCase().includes('stripe')) {
     console.warn(
-      `⚠️ [Fulfillment] Payment method mismatch! UI wanted "${targetMethodName}" but used "${selectedMethod.name}" due to Odoo 19 restrictions or missing config.`,
+      `⚠️ [Fulfillment] Payment method mismatch! UI wanted "${targetMethodName}" but used "${selectedMethod.name}" due to missing Odoo config.`,
     )
   }
 
@@ -181,9 +162,6 @@ export async function fulfillOdooOrder(
           name: customer.name,
           email: customer.email,
           phone: customer.phone,
-          street: customer.street,
-          city: customer.city,
-          zip: customer.zip,
           country_id: 236, // Assuming India
         },
       ],
@@ -193,112 +171,77 @@ export async function fulfillOdooOrder(
     console.log(`[Fulfillment] New partner created: ${partnerId}`)
   }
 
-  // 3.5. Update partner with latest details for persistence
-  try {
-    console.log(`[Fulfillment] Updating partner ${partnerId} with current checkout info...`)
-    await odooCall('res.partner', 'write', {
-      ids: [partnerId],
-      vals: {
-        phone: customer.phone,
-        street: customer.street,
-        city: customer.city,
-        zip: customer.zip,
-      }
-    })
-  } catch (updateErr) {
-    console.warn(`[Fulfillment] Non-fatal: Failed to update partner info:`, updateErr)
-  }
-
   // 4. Calculate Totals
-  console.log('[Fulfillment] Resolving order breakdown...')
-  
-  const hasPreCalculatedData = cartItems.every(item => 
-    (item as any).price_unit_incl !== undefined && (item as any).tax_ids !== undefined
-  )
-
-  let orderBreakdown: { 
-    lines: any[], 
-    amount_total: number, 
-    amount_tax: number 
-  }
-
-  if (hasPreCalculatedData) {
-    console.log('[Fulfillment] Using pre-calculated pricing data from metadata.')
-    const lines = cartItems.map(item => {
-      const unitIncl = (item as any).price_unit_incl;
-      const unitExcl = item.list_price || 0; // 'pr' from metadata
-      const qty = item.quantity;
-
-      return {
-        ...item,
-        price_unit_incl: unitIncl,
-        price_subtotal: unitExcl * qty,
-        price_subtotal_incl: unitIncl * qty,
-      }
-    })
-    const total = lines.reduce((sum, l) => sum + l.price_subtotal_incl, 0)
-    const tax = lines.reduce((sum, l) => sum + (l.price_subtotal_incl - l.price_subtotal), 0)
-    
-    orderBreakdown = {
-      lines,
-      amount_total: Math.round(total),
-      amount_tax: Math.round(tax)
-    }
-  } else {
-    console.log('[Fulfillment] Recalculating totals from Odoo product data...')
-    orderBreakdown = await calculateOrderTotal(cartItems)
-  }
+  console.log('[Fulfillment] Resolving order breakdown via calculateOrderTotal...')
+  // The cartItems (orderLines) here are already expanded/flattened by the payment provider 
+  // (e.g. StripeAdapter.processSession) and reconstructed from metadata.
+  const orderBreakdown = await calculateOrderTotal(cartItems)
 
   console.log('[Fulfillment] Order Totals:', {
     total: orderBreakdown.amount_total,
     tax: orderBreakdown.amount_tax,
   })
 
-  // 5. Build REST-style nested lines for custom Odoo API
-  // The Odoo create_api_order expects a nested list of lines with combo_line_ids.
-  // We reconstruct the hierarchy from the flat list (where parent has price and children are children).
-  const nestedLinesForApi: any[] = []
-  let currentParent: any = null
+  // 5. Build lines for Custom Odoo API (NESTED format required by create_api_order)
+  const nestedLines: any[] = []
+  const cidLineMap: Record<string, any> = {}
 
+  // First pass: Create all line objects and map them by CID
   orderBreakdown.lines.forEach((line) => {
-    const isChild = !!(line as any).combo_item_id
-    
-    if (!isChild) {
-      if (currentParent) nestedLinesForApi.push(currentParent)
-      currentParent = {
+    if (line.cid) {
+      cidLineMap[line.cid] = {
         product_id: line.product_id,
         qty: line.quantity,
         price_unit: line.list_price || 0,
         note: line.customer_note || '',
-        combo_line_ids: []
-      }
-    } else if (currentParent) {
-      currentParent.combo_line_ids.push({
-        product_id: line.product_id,
-        qty: line.quantity,
+        tax_ids: [[6, 0, (line as any).tax_ids || []]],
+        attribute_value_ids: line.attribute_value_ids || [], 
         combo_item_id: (line as any).combo_item_id,
-        extra_price: line.list_price || 0
-      })
+        extra_price: line.list_price || 0,
+        combo_line_ids: [], // Recursive children
+      }
     }
   })
-  if (currentParent) nestedLinesForApi.push(currentParent)
 
+  // Second pass: Build the nesting tree
+  orderBreakdown.lines.forEach((line) => {
+    if (line.cid) {
+      const currentLine = cidLineMap[line.cid]
+      if (line.parent_cid && cidLineMap[line.parent_cid]) {
+        // This is a child: add to parent's combo_line_ids
+        cidLineMap[line.parent_cid].combo_line_ids.push(currentLine)
+      } else if (!line.parent_cid) {
+        // This is a top-level parent: add to root list
+        nestedLines.push(currentLine)
+      }
+    }
+  })
+
+  // 6. Build payload for Custom API (create_api_order)
+  // Reverted to NESTED because the custom Python backend uses 'combo_line_ids'.
   const apiOrderPayload = {
-    uuid: stripePaymentIntentId || `WEB-${Date.now()}`,
+    uuid: stripePaymentIntentId,
+    name: stripePaymentIntentId, 
+    pos_reference: stripePaymentIntentId,
     session_id: sessionId,
     partner_id: partnerId,
-    lines: nestedLinesForApi,
-    payment_method_id: paymentMethodId,
-    payment_method: (paymentMethod === 'stripe' || paymentMethod === 'demo_online') ? 'online' : 'cash',
-    source: 'native_web',
-    customer_name: customer.name,
-    customer_phone: customer.phone,
-    delivery_address: `${customer.street}, ${customer.city}, ${customer.zip}`,
-    notes: notes || '',
+    lines: nestedLines, // Nested structure
+    amount_total: orderBreakdown.amount_total,
+    amount_tax: orderBreakdown.amount_tax,
     amount_paid: orderBreakdown.amount_total,
+    amount_return: 0,
+    payment_method_id: paymentMethodId,
+    payment_amount: orderBreakdown.amount_total,
+    stripe_session_id: stripePaymentIntentId,
+    to_invoice: true,
+    notes: notes, // Overall order note for general_customer_note
+    stripe_card_brand: payload.stripeCardDetails?.card_brand,
+    stripe_card_last4: payload.stripeCardDetails?.card_no,
+    stripe_cardholder_name: payload.stripeCardDetails?.cardholder_name,
+    stripe_transaction_id: payload.stripeCardDetails?.transaction_id || stripePaymentIntentId,
   }
 
-  // 6. Create POS Order via Custom API (Ensures Real-time Notifications)
+  // 7. Create POS Order via Custom API
   console.log(`🚀 [Fulfillment] Creating POS Order via create_api_order...`)
   let orderId: number | null = null
   try {
@@ -306,52 +249,39 @@ export async function fulfillOdooOrder(
       order_data: apiOrderPayload
     })
     
-    // Result might be an ID or an object depending on the API implementation
-    orderId = typeof result === 'object' ? result.id : result
+    if (typeof result === 'number') {
+      orderId = result;
+    } else if (Array.isArray(result) && result.length > 0) {
+      orderId = result[0];
+    } else if (typeof result === 'object' && result !== null) {
+      orderId = result.id || result.result || (Array.isArray(result.ids) ? result.ids[0] : null);
+    }
+
     if (!orderId) throw new Error('Odoo API did not return an order ID')
     
-    console.log(`✅ [Fulfillment] POS Order created & Notified with ID: ${orderId}`)
+    console.log(`✅ [Fulfillment] POS Order created ID: ${orderId}`)
     logToFile(`✅ POS Order created via custom API (ID: ${orderId})`);
   } catch (e: any) {
     console.error('❌ [Fulfillment] Failed to create API order:', e.message)
     throw e
   }
 
-  // 7. Generate Invoice
-  console.log('[Fulfillment] Generating invoice...')
-  try {
-    // Note: odooCall now has a 30s timeout by default
-    await odooCall('pos.order', 'action_pos_order_invoice', { ids: [orderId!] })
-    console.log('✅ [Fulfillment] Invoice generated.')
-  } catch (e: any) {
-    console.warn(`[Fulfillment] Invoice timeout/error: ${e.message}. Verifying existence...`)
-  }
-
   // 8. Final Verification & State Check
+  console.log('[Fulfillment] Refetching order to verify state...')
   const orderRefetched = await odooCall<any[]>('pos.order', 'read', {
     ids: [orderId!],
-    fields: ['pos_reference', 'state', 'account_move', 'is_invoiced'],
+    fields: ['pos_reference', 'state', 'account_move'],
   })
 
   const orderRecord = orderRefetched?.[0]
-  if (orderRecord?.account_move) {
-    const moveId = Array.isArray(orderRecord.account_move) ? orderRecord.account_move[0] : orderRecord.account_move
-    const move = await odooCall<any[]>('account.move', 'read', { ids: [moveId], fields: ['state'] })
-    if (move?.[0]?.state === 'draft') {
-      await odooCall('account.move', 'action_post', { ids: [moveId] }).catch(() => {})
-    }
-  } else if (orderRecord?.state === 'paid' && !orderRecord.is_invoiced) {
-    // If invoice failed but paid, move to done
-    await odooCall('pos.order', 'write', { ids: [orderId!], vals: { state: 'done' } }).catch(() => {})
-  }
-
-  console.log(`✅ [Fulfillment] Order #${orderId} processed. Final State: ${orderRecord?.state || 'done'}`)
+  const finalState = orderRecord?.state || 'done'
+  console.log(`✅ [Fulfillment] Order #${orderId} processed. Final State: ${finalState}`)
   
   return {
     orderId,
-    posReference: orderRecord?.pos_reference || `Order #${orderId}`,
-    state: orderRecord?.state || 'done',
-    accountMoveName: Array.isArray(orderRecord?.account_move) ? orderRecord.account_move[1] : '',
+    posReference: orderRecord?.pos_reference || stripePaymentIntentId,
+    state: finalState,
+    accountMoveName: Array.isArray(orderRecord?.account_move) ? orderRecord.account_move[1] : (typeof orderRecord?.account_move === 'string' ? orderRecord.account_move : ''),
     invoiceId: Array.isArray(orderRecord?.account_move) ? orderRecord.account_move[0] : orderRecord.account_move
   }
 }

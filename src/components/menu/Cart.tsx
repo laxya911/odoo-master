@@ -51,7 +51,7 @@ export function Cart() {
   const { formatPrice } = useCompany()
   const { session } = useSession()
   const { isAuthenticated } = useAuth()
-  const { taxes, defaultTaxId } = useProducts()
+  const { taxes, defaultTaxId, currency } = useProducts()
   const router = useRouter()
 
   const { total, subtotal, tax } = getCartBreakdown()
@@ -122,7 +122,7 @@ export function Cart() {
                       <div className="flex justify-between items-start">
                         <p className='font-semibold line-clamp-1 mr-2'>{translate(item.product.name)}</p>
                         <p className='font-bold text-accent-gold'>
-                          {formatPrice(calculateItemPricing(item.product, item.meta, taxes, defaultTaxId).totalPaid * item.quantity)}
+                          {formatPrice(calculateItemPricing(item.product, item.meta, taxes, defaultTaxId, currency).totalPaid * item.quantity)}
                         </p>
                       </div>
                       <div className="space-y-0.5 mt-1">
@@ -208,7 +208,7 @@ export function Cart() {
                         )}
 
                         <p className="text-[11px] text-muted-foreground/60 mt-1">
-                          {formatPrice(calculateItemPricing(item.product, item.meta, taxes, defaultTaxId).unitPrice)} {t('each')}
+                          {formatPrice(calculateItemPricing(item.product, item.meta, taxes, defaultTaxId, currency).unitPrice)} {t('each')}
                         </p>
                       </div>
                     </div>

@@ -1,9 +1,22 @@
 import { odooCall } from './odoo-client'
-import type { OrderLineItem, CartItem } from './types'
+import { CartItem, OrderLineItem } from './types'
 
+/**
+ * Calculates the total amount for an Odoo POS order.
+ * Handles tax-inclusive and tax-exclusive pricing logic matching Odoo's backend.
+ * @param orderLines Flat list of expanded order lines
+ * @returns Object with amount_total, amount_tax, and processed lines
+ */
 export async function calculateOrderTotal(orderLines: OrderLineItem[]) {
-  // Fetch product tax relations for all products
-  const productIds = Array.from(new Set(orderLines.map((i) => i.product_id)))
+  const productIds = [
+    ...new Set(orderLines.map((line) => line.product_id).filter(Boolean)),
+  ]
+
+  if (productIds.length === 0) {
+    return { amount_total: 0, amount_tax: 0, subtotal: 0, lines: [] }
+  }
+
+  // Fetch product tax metadata
   const productsWithData = await odooCall<
     Array<{ id: number; taxes_id: number[]; list_price: number }>
   >('product.product', 'read', {
@@ -11,144 +24,99 @@ export async function calculateOrderTotal(orderLines: OrderLineItem[]) {
     fields: ['id', 'taxes_id', 'list_price'],
   })
 
-  const productDataMap: Record<
+  // Fetch unique tax details
+  const taxIds = [
+    ...new Set(productsWithData.flatMap((p) => p.taxes_id || [])),
+  ]
+  let taxesMap: Record<
     number,
-    { taxes_id: number[]; list_price: number }
+    { id: number; amount: number; price_include: boolean }
   > = {}
-  for (const prod of productsWithData) {
-    productDataMap[prod.id] = {
-      taxes_id: prod.taxes_id || [],
-      list_price: prod.list_price || 0,
-    }
-  }
-
-  // Fetch Company Default Tax if needed
-  let defaultTaxId: number | null = null
-  const anyProductHasNoTax = Object.values(productDataMap).some(p => p.taxes_id.length === 0)
-  
-  if (anyProductHasNoTax) {
-    const companies = await odooCall<any[]>('res.company', 'search_read', {
-      domain: [],
-      fields: ['account_sale_tax_id'],
-      limit: 1
+  if (taxIds.length > 0) {
+    const taxData = await odooCall<any[]>('account.tax', 'read', {
+      ids: taxIds,
+      fields: ['id', 'amount', 'price_include'],
     })
-    defaultTaxId = companies[0]?.account_sale_tax_id?.[0] || null
+    taxData.forEach((t) => {
+      taxesMap[t.id] = t
+    })
   }
 
-  // Collect all tax ids used and fetch tax records
-  const allTaxIds = Array.from(
-    new Set(Object.values(productDataMap).flatMap((p) => p.taxes_id)),
-  )
-  if (defaultTaxId && !allTaxIds.includes(defaultTaxId)) {
-    allTaxIds.push(defaultTaxId)
-  }
+  // Fetch currency settings for rounding
+  const currency = await getCompanyCurrency()
+  const dp = currency.decimal_places
 
-  const taxes =
-    allTaxIds.length > 0
-      ? await odooCall<
-          Array<{
-            id: number
-            amount: number
-            amount_type: string
-            price_include: boolean
-          }>
-        >('account.tax', 'read', {
-          ids: allTaxIds,
-          fields: ['id', 'amount', 'amount_type', 'price_include'],
-        })
-      : []
-
-  const taxById: Record<
-    number,
-    { id: number; amount: number; amount_type: string; price_include: boolean }
-  > = {}
-  for (const t of taxes) {
-    taxById[t.id] = t
-  }
-
-  let computedAmountTax = 0
   let computedAmountTotal = 0
+  let computedAmountTax = 0
+  let subtotalBalance = 0
 
   const processedLines = orderLines.map((item) => {
-    const qty = item.quantity
-    const pData = productDataMap[item.product_id] || {
-      taxes_id: [],
-      list_price: 0,
-    }
-    let applicableTaxIds: number[] = []
-    if (Array.isArray(pData.taxes_id) && pData.taxes_id.length > 0) {
-      applicableTaxIds = pData.taxes_id
-    } else if (defaultTaxId) {
-      applicableTaxIds = [defaultTaxId]
-    }
+    const qty = item.quantity || 1
+    const product = productsWithData.find((p) => p.id === item.product_id)
+    if (!product) return { ...item, price_unit_incl: item.list_price, price_subtotal: item.list_price * qty, price_subtotal_incl: item.list_price * qty, tax_ids: [] }
 
-    // Odoo's list_price is the price excluding tax if tax is excluded, 
-    // and price including tax if tax is included.
-    const priceUnit = (item.list_price ?? pData.list_price) + (item.price_extra || 0)
-
+    // Use price from order line (surcharge) or product list_price
+    let priceUnit = (item.list_price !== undefined && item.list_price !== null) ? item.list_price : product.list_price
     
-    // 1. Identify included taxes to get the "extra" base price
-    let totalIncludedRate = 0
-    for (const tid of applicableTaxIds) {
-      const tx = taxById[tid]
-      if (tx && tx.price_include) {
-        totalIncludedRate += tx.amount / 100
+    // ADDITION: Include attribute extras in the base unit price for total calculation
+    if (item.price_extra) {
+      priceUnit += item.price_extra
+    }
+    
+    const applicableTaxIds = product.taxes_id || []
+    let includedTaxRate = 0
+    let excludedTaxRate = 0
+
+    applicableTaxIds.forEach((id) => {
+      const tax = taxesMap[id]
+      if (tax) {
+        if (tax.price_include) {
+          includedTaxRate += tax.amount / 100
+        } else {
+          excludedTaxRate += tax.amount / 100
+        }
       }
-    }
+    })
 
-    // 2. Extract TRUE pre-tax base price
-    // If tax is included, list_price = Base * (1 + rate)
-    // If tax is excluded, list_price = Base
-    let basePriceExcl = priceUnit
-    if (totalIncludedRate > 0) {
-      basePriceExcl = priceUnit / (1 + totalIncludedRate)
-    }
-    basePriceExcl = Number(basePriceExcl.toFixed(2))
-
+    // Odoo Native Calculation Path:
+    // 1. Base Price (Excluded) = priceUnit / (1 + includedRate)
+    const basePriceExcl = priceUnit / (1 + includedTaxRate)
     const subtotalExcl = basePriceExcl * qty
-    let lineTaxBalance = 0
+    
+    // 2. Tax Amount = (subtotalExcl * excludedRate) + (priceUnit - basePriceExcl)*qty
+    const includedTaxAmount = (priceUnit - basePriceExcl) * qty
+    const excludedTaxAmount = subtotalExcl * excludedTaxRate
+    const lineTaxBalance = includedTaxAmount + excludedTaxAmount
 
-    // 3. Apply ALL taxes to the base price
-    for (const tid of applicableTaxIds) {
-      const tx = taxById[tid]
-      if (!tx) continue
-      lineTaxBalance += subtotalExcl * (tx.amount / 100)
-    }
-
-    lineTaxBalance = Number(lineTaxBalance.toFixed(2))
     const lineTotal = subtotalExcl + lineTaxBalance
-    const priceUnitIncl = Number((lineTotal / qty).toFixed(2))
+    const priceUnitIncl = lineTotal / qty
 
     computedAmountTax += lineTaxBalance
     computedAmountTotal += lineTotal
+    subtotalBalance += subtotalExcl
 
     return {
+      cid: item.cid,
+      parent_cid: item.parent_cid,
       product_id: item.product_id,
       quantity: item.quantity,
-      list_price: priceUnit, // Original list price
-      price_unit_incl: priceUnitIncl, // TRUE targeted inclusive price
-      price_subtotal: subtotalExcl,
-      price_subtotal_incl: lineTotal,
+      list_price: priceUnit, 
+      price_unit_incl: Number(priceUnitIncl.toFixed(dp)), 
+      price_subtotal: Number(subtotalExcl.toFixed(dp)),
+      price_subtotal_incl: Number(lineTotal.toFixed(dp)),
       tax_ids: applicableTaxIds,
       customer_note: item.customer_note || '',
-      // Odoo 19 Linkage
+      attribute_value_ids: item.attribute_value_ids || [],
       combo_id: item.combo_id,
       combo_item_id: item.combo_item_id,
     }
   })
 
   return {
-    lines: processedLines as unknown as Array<
-      OrderLineItem & {
-        price_unit_incl: number
-        price_subtotal: number
-        price_subtotal_incl: number
-        tax_ids: number[]
-        customer_note: string
-      }
-    >,
-    amount_tax: Math.round(computedAmountTax),
-    amount_total: Math.round(computedAmountTotal),
+    lines: processedLines as any[],
+    amount_tax: Number(computedAmountTax.toFixed(dp)),
+    amount_total: Number(computedAmountTotal.toFixed(dp)),
+    subtotal: Number(subtotalBalance.toFixed(dp)),
   }
 }
 
@@ -159,10 +127,10 @@ export async function calculateOrderTotal(orderLines: OrderLineItem[]) {
 export function expandCartItems(cartItems: CartItem[]): OrderLineItem[] {
   const expanded: OrderLineItem[] = []
 
-  // Recursive helper to expand combo selections
   const expandCombo = (
     selections: any[],
     parentQty: number,
+    parentCid: string,
   ): OrderLineItem[] => {
     const lines: OrderLineItem[] = []
     for (const selection of selections) {
@@ -177,12 +145,14 @@ export function expandCartItems(cartItems: CartItem[]): OrderLineItem[] {
         const pid = productIds[i]
         const ciid = comboItemIds[i]
         const price = extraPrices[i] || 0
-        const itemAttrs = attributes[i] // Array of attribute IDs for this specific product
-        const itemSubs = subSelections[i] // Array of combo selections for this specific product
+        const itemAttrs = attributes[i] 
+        const itemSubs = subSelections[i] 
 
-        // Since productIds already contains duplicates if quantity > 1,
-        // we just push one line per entry here.
+        const childCid = `${parentCid}_c${i}_${pid}`
+
         lines.push({
+          cid: childCid,
+          parent_cid: parentCid,
           product_id: pid,
           quantity: parentQty,
           list_price: price,
@@ -193,9 +163,8 @@ export function expandCartItems(cartItems: CartItem[]): OrderLineItem[] {
           customer_note: '',
         })
 
-        // Recursively add nested combos for this item
         if (itemSubs && itemSubs.length > 0) {
-          lines.push(...expandCombo([itemSubs], parentQty))
+          lines.push(...expandCombo(itemSubs, parentQty, childCid))
         }
       }
     }
@@ -203,55 +172,25 @@ export function expandCartItems(cartItems: CartItem[]): OrderLineItem[] {
   }
 
   for (const item of cartItems) {
-    let subItemTotalExtra = 0
     let childLines: OrderLineItem[] = []
 
     if (item.meta?.combo_selections) {
-      childLines = expandCombo(item.meta.combo_selections, item.quantity)
-      // Calculate total extra price from ALL expanded child lines
-      // (Note: Odoo usually expects the parent to have the base price and children have the extra)
-      subItemTotalExtra = childLines.reduce((sum, cl) => sum + (cl.list_price || 0), 0)
+      childLines = expandCombo(item.meta.combo_selections, item.quantity, item.id)
     }
 
-    // 1. Calculate attribute extra price
-    let attributeExtraPrice = 0
-    if (item.meta?.attribute_value_ids) {
-      item.meta.attribute_value_ids.forEach(vid => {
-        item.product.attributes?.forEach(attr => {
-          const val = attr.values.find(v => v.id === vid)
-          if (val) attributeExtraPrice += (val.price_extra || 0)
-        })
-      })
-    }
+    let attributeExtraPrice = item.meta?.attribute_price_extra || 0
 
-    // 2. Add Parent Line. The parent's list_price is fixed (e.g. 2000).
     const basePrice = item.product.list_price || 0
     
-    // Always add parent line for POS combos (it's the anchor)
-    // We initially set list_price to 0 for combo parents. If it turns out it's NOT a combo
-    // (no child lines), we immediately restore it.
     expanded.push({
+      cid: item.id,
       product_id: item.product.id,
       quantity: item.quantity,
-      list_price: 0, 
-      attribute_value_ids: item.meta?.attribute_value_ids,
+      list_price: basePrice, 
+      attribute_value_ids: item.meta?.attribute_value_ids && item.meta.attribute_value_ids.length > 0 ? item.meta.attribute_value_ids : undefined,
       price_extra: attributeExtraPrice,
       customer_note: item.notes || item.meta?.notes || '',
     })
-
-
-    // 3. Add Child Lines and shift price
-    if (childLines.length > 0) {
-      // FIX for Odoo Accounting Display Type Validation Error:
-      // Combo parents usually do not have income accounts configured in Odoo.
-      // Odoo POS native dynamically fractions the parent's $2000 price over the child lines ($927, $927, $146 etc)
-      // to generate valid journal items using the children's accounts.
-      // We replicate this safely by just shifting the parent's basePrice to the first child.
-      childLines[0].list_price = (childLines[0].list_price || 0) + basePrice;
-    } else {
-      // It's a standard product without combo children. Restore base price.
-      expanded[expanded.length - 1].list_price = basePrice;
-    }
 
     expanded.push(...childLines)
   }
@@ -259,7 +198,7 @@ export function expandCartItems(cartItems: CartItem[]): OrderLineItem[] {
   return expanded
 }
 
-export async function getCompanyCurrency(): Promise<string> {
+export async function getCompanyCurrency(): Promise<{ name: string; decimal_places: number }> {
   try {
     const companies = await odooCall<any[]>('res.company', 'search_read', {
       domain: [],
@@ -274,59 +213,26 @@ export async function getCompanyCurrency(): Promise<string> {
       if (currencyId) {
         const currencies = await odooCall<any[]>('res.currency', 'read', {
           ids: [currencyId],
-          fields: ['name'],
+          fields: ['name', 'decimal_places'],
         })
         if (currencies && currencies.length > 0) {
-          return (currencies[0].name || 'usd').toLowerCase()
+          return {
+            name: (currencies[0].name || 'usd').toLowerCase(),
+            decimal_places: currencies[0].decimal_places ?? 2
+          }
         }
       }
     }
   } catch (err) {
     console.error('Failed to fetch company currency:', err)
   }
-  return 'usd' // default fallback
+  return { name: 'usd', decimal_places: 2 } // default fallback
 }
 
-/**
- * List of zero-decimal currencies supported by Stripe.
- * @see https://stripe.com/docs/currencies#zero-decimal
- */
-const ZERO_DECIMAL_CURRENCIES = [
-  'bif',
-  'clp',
-  'djf',
-  'gnf',
-  'jpy',
-  'kmf',
-  'mga',
-  'pyg',
-  'rwf',
-  'ugx',
-  'vnd',
-  'vuv',
-  'xaf',
-  'xof',
-  'xpf',
-]
-
-/**
- * Converts a decimal amount to the smallest unit for Stripe (e.g., cents for USD, yen for JPY).
- */
-export function toSmallestUnit(amount: number, currency: string): number {
-  const isZeroDecimal = ZERO_DECIMAL_CURRENCIES.includes(currency.toLowerCase())
-  if (isZeroDecimal) {
-    return Math.round(amount)
-  }
-  return Math.round(amount * 100)
+export function toSmallestUnit(amount: number, decimalPlaces: number): number {
+  return Math.round(amount * Math.pow(10, decimalPlaces))
 }
 
-/**
- * Converts an amount in Stripe's smallest unit back to a decimal amount.
- */
-export function fromSmallestUnit(amount: number, currency: string): number {
-  const isZeroDecimal = ZERO_DECIMAL_CURRENCIES.includes(currency.toLowerCase())
-  if (isZeroDecimal) {
-    return amount
-  }
-  return amount / 100
+export function fromSmallestUnit(amount: number, decimalPlaces: number): number {
+  return amount / Math.pow(10, decimalPlaces)
 }

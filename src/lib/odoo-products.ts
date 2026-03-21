@@ -100,15 +100,31 @@ export async function getRestaurantProducts(options: GetProductsOptions = {}) {
     ...new Set(records.flatMap((r: OdooRecord) => (r.taxes_id as number[]) || [])),
   ]
 
-  // Add Company Default Tax to the fetch list
+  // Add Company Default Tax and Currency to the fetch list
   const companies = await odooCall<any[]>('res.company', 'search_read', {
     domain: [],
-    fields: ['account_sale_tax_id'],
+    fields: ['account_sale_tax_id', 'currency_id'],
     limit: 1
   })
   const defaultTaxId = companies[0]?.account_sale_tax_id?.[0]
   if (defaultTaxId && !allTaxIds.includes(defaultTaxId)) {
     allTaxIds.push(defaultTaxId)
+  }
+
+  // Fetch Currency Details
+  let currency = { name: 'usd', decimal_places: 2 }
+  const currencyId = companies[0]?.currency_id?.[0]
+  if (currencyId) {
+    const currencies = await odooCall<any[]>('res.currency', 'read', {
+      ids: [currencyId],
+      fields: ['name', 'decimal_places'],
+    })
+    if (currencies && currencies.length > 0) {
+      currency = {
+        name: (currencies[0].name || 'usd').toLowerCase(),
+        decimal_places: currencies[0].decimal_places ?? 2
+      }
+    }
   }
 
   let taxesMap: Record<number, { id: number; name: string; amount: number; price_include: boolean }> = {}
@@ -136,6 +152,7 @@ export async function getRestaurantProducts(options: GetProductsOptions = {}) {
     tags,
     taxes: taxesMap,
     defaultTaxId,
+    currency,
     meta: {
       total,
       limit,
@@ -145,6 +162,7 @@ export async function getRestaurantProducts(options: GetProductsOptions = {}) {
       categories,
       tags,
       defaultTaxId,
+      currency,
     },
   }
 }

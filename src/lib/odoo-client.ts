@@ -19,14 +19,36 @@ export async function odooCall<T>(
   const rawBaseUrl = process.env.ODOO_BASE_URL || 'https://demo.primetek.in'
   // Normalize: Remove trailing slash and force https
   let baseUrl = rawBaseUrl.endsWith('/') ? rawBaseUrl.slice(0, -1) : rawBaseUrl
-  if (baseUrl.startsWith('http://')) {
+  
+  // Ensure protocol exists (default to https for external, http for local)
+  if (!baseUrl.startsWith('http')) {
+    if (baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1')) {
+      baseUrl = `http://${baseUrl}`
+    } else {
+      baseUrl = `https://${baseUrl}`
+    }
+  }
+
+  // Force https ONLY for remote hosts to avoid POST->GET redirects
+  if (
+    baseUrl.startsWith('http://') && 
+    !baseUrl.includes('localhost') && 
+    !baseUrl.includes('127.0.0.1')
+  ) {
     console.warn(
-      `[odooCall] WARNING: ODOO_BASE_URL starts with http://. Forcing https:// to avoid POST->GET redirect conversion.`,
+      `[odooCall] WARNING: Remote ODOO_BASE_URL starts with http://. Forcing https:// to avoid POST->GET redirect conversion.`,
     )
     baseUrl = baseUrl.replace('http://', 'https://')
   }
   const apiKey = process.env.ODOO_API_KEY
-  const db = process.env.ODOO_DB || 'ram-db'
+  
+  // Environment-aware DB fallback
+  let defaultDb = 'local-db'
+  if (baseUrl.includes('primetek.in')) {
+    defaultDb = 'ram-db'
+  }
+  
+  const db = process.env.ODOO_DB || defaultDb
 
   if (!apiKey) {
     const errorMsg = `Odoo API key (ODOO_API_KEY) is not configured. Base URL: ${baseUrl}, DB: ${db}`
