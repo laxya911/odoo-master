@@ -10,6 +10,8 @@ import { useCompany } from '@/context/CompanyContext'
 import { useProducts } from '@/context/ProductContext'
 import { useTranslations } from 'next-intl'
 import { useDynamicTranslation } from '@/hooks/use-dynamic-translation'
+import { Utensils } from 'lucide-react'
+import { useState } from 'react'
 
 interface ProductCardProps {
   product: Product
@@ -33,6 +35,10 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
   const cartT = useTranslations('cart')
   const menuT = useTranslations('menu')
+  const [imageError, setImageError] = useState(false)
+
+  const hasImage = !!product.image_256 && !imageError
+
   return (
     <div
       className={cn(
@@ -42,20 +48,41 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       )}
       onClick={() => onOpenConfigurator(product)}
     >
-      <div className='relative h-48 md:h-64 overflow-hidden'>
-        <Image
-          src={
-            product.image_256
-              ? `data:image/png;base64,${product.image_256}`
-              : '/images/placeholder-food.jpg'
-          }
-          alt={translate(product.name)}
-          fill
-          className='object-cover group-hover:scale-105 transition-transform duration-700'
-          sizes='(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw'
-          priority={index < 4}
-        />
-        <div className='absolute inset-0 bg-linear-to-t from-neutral-950 to-transparent opacity-60' />
+      <div className='relative h-48 md:h-64 overflow-hidden bg-neutral-800 flex items-center justify-center group'>
+        {hasImage ? (
+          <>
+            <Image
+              src={`data:image/png;base64,${product.image_256}`}
+              alt={translate(product.name)}
+              fill
+              className='object-cover group-hover:scale-105 transition-transform duration-700'
+              sizes='(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw'
+              priority={index < 4}
+              onError={() => setImageError(true)}
+            />
+            <div className='absolute inset-0 bg-linear-to-t from-neutral-950 to-transparent opacity-60' />
+          </>
+        ) : (
+          <div className='w-full h-full flex flex-col items-center justify-center relative overflow-hidden'>
+            {/* Animated Gradient Background for missing images */}
+            <div className='absolute inset-0 bg-linear-to-br from-neutral-800 via-neutral-900 to-neutral-800 opacity-50' />
+            <div className='absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(168,143,84,0.1),transparent_70%)]' />
+            
+            <div className='relative z-10 flex flex-col items-center justify-center gap-4 group-hover:scale-110 transition-transform duration-500'>
+              <div className='w-20 h-20 rounded-full bg-white/5 border border-white/10 flex items-center justify-center backdrop-blur-sm shadow-2xl'>
+                <Utensils className='w-10 h-10 text-accent-gold/40' />
+              </div>
+              <p className='text-xs font-bold uppercase tracking-[0.2em] text-white/20 font-display'>
+                {menuT('noImageAvailable') || 'Premium Selection'}
+              </p>
+            </div>
+
+            {/* Subtle decorative text in background */}
+            <div className='absolute -bottom-4 -left-4 text-4xl font-black text-white/[0.02] select-none pointer-events-none uppercase tracking-tighter whitespace-nowrap rotate-12'>
+              {translate(product.name)}
+            </div>
+          </div>
+        )}
       </div>
       <div className='p-6 md:p-8 flex flex-col grow'>
         <div className='flex justify-between items-start mb-2'>
