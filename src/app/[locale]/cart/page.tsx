@@ -6,12 +6,13 @@ import { useCompany } from '@/context/CompanyContext'
 import { useProducts } from '@/context/ProductContext'
 import { useSession } from '@/context/SessionContext'
 import { useAuth } from '@/context/AuthContext'
+import { useProductConfigurator } from '@/hooks/use-product-configurator'
 import { useDynamicTranslation } from '@/hooks/use-dynamic-translation'
 import { useTranslations } from 'next-intl'
 import { calculateItemPricing } from '@/lib/pricing-utils'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
-import Image from 'next/image'
+import { FallbackImage } from '@/components/ui/FallbackImage'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
@@ -22,6 +23,11 @@ import dynamic from 'next/dynamic'
 
 const CheckoutDialog = dynamic(
   () => import('@/components/menu/CheckoutDialog').then((m) => ({ default: m.CheckoutDialog })),
+  { ssr: false }
+)
+
+const ProductConfigurator = dynamic(
+  () => import('@/components/menu/ProductConfigurator').then((m) => ({ default: m.ProductConfigurator })),
   { ssr: false }
 )
 
@@ -46,6 +52,14 @@ export default function CartPage() {
     setIsCheckoutOpen,
   } = useCart()
 
+  const {
+    selectedProduct,
+    setSelectedProduct,
+    isLoadingDetails,
+    openConfigurator,
+  } = useProductConfigurator()
+
+  const [editingItemId, setEditingItemId] = useState<string | null>(null)
   const [editingNotes, setEditingNotes] = useState<string | null>(null)
   const [notesDraft, setNotesDraft] = useState('')
 
@@ -56,6 +70,7 @@ export default function CartPage() {
       toast.error(commonT('loginRequired'), {
         description: commonT('loginRequiredDesc'),
       })
+      // Redirect to auth with callback to current page
       router.push(`/auth?callbackUrl=${encodeURIComponent('/cart')}`)
       return
     }
@@ -113,19 +128,24 @@ export default function CartPage() {
                 return (
                   <div
                     key={item.id}
-                    className="bg-neutral-900/60 border border-white/5 rounded-3xl p-5 flex gap-4 hover:border-accent-gold/20 transition-all"
+                    onClick={() => {
+                        setEditingItemId(item.id)
+                        openConfigurator(item.product)
+                    }}
+                    className="bg-neutral-900/60 border border-white/5 rounded-3xl p-5 flex gap-4 hover:border-accent-gold/20 transition-all cursor-pointer group"
                   >
                     {/* Image */}
-                    <div className="relative w-20 h-20 rounded-2xl overflow-hidden flex-shrink-0 border border-white/5">
-                      <Image
+                    <div className="relative w-20 h-20 rounded-2xl overflow-hidden flex-shrink-0 border border-white/5 bg-neutral-800">
+                      <FallbackImage
                         src={
                           item.product.image_256
                             ? `data:image/png;base64,${item.product.image_256}`
-                            : '/images/placeholder-food.jpg'
+                            : ''
                         }
                         alt={translate(item.product.name)}
                         fill
-                        className="object-cover"
+                        className="object-cover group-hover:scale-110 transition-transform duration-500"
+                        sizes="80px"
                       />
                     </div>
 
@@ -222,7 +242,6 @@ export default function CartPage() {
                                          {subSels.length > 0 && (
                                             <div className="pl-3 mt-1 space-y-1">
                                                {/* We'd normally recurse here if we had a component, but for cart 2 levels usually enough */}
-                                               {/* If needed, we can extract this to a component. */}
                                             </div>
                                          )}
                                       </div>
@@ -234,8 +253,9 @@ export default function CartPage() {
                       )}
 
                       {/* Notes */}
-                      {editingNotes === item.id ? (
-                        <div className="mt-2 flex gap-2">
+                      <div className="mt-3" onClick={e => e.stopPropagation()}>
+                        {editingNotes === item.id ? (
+                        <div className="flex gap-2">
                           <input
                             autoFocus
                             value={notesDraft}
@@ -245,7 +265,7 @@ export default function CartPage() {
                           />
                           <Button
                             size="sm"
-                            className="bg-accent-gold text-primary text-xs h-8 px-3 rounded-lg font-bold"
+                            className="bg-accent-gold text-primary text-xs h-8 px-3 rounded-lg font-bold hover:bg-white transition-colors"
                             onClick={() => {
                               updateItemNotes(item.id, notesDraft)
                               setEditingNotes(null)
@@ -260,17 +280,18 @@ export default function CartPage() {
                             setNotesDraft(item.notes || item.meta?.notes || '')
                             setEditingNotes(item.id)
                           }}
-                          className="mt-2 text-[11px] text-white/30 hover:text-accent-gold transition-colors"
+                          className="text-[11px] text-white/30 hover:text-accent-gold transition-colors flex items-center gap-1.5"
                         >
                           {item.notes || item.meta?.notes
-                            ? `📝 "${item.notes || item.meta?.notes}"`
-                            : '+ Add note for kitchen'}
+                            ? <span className="text-accent-gold">📝 {item.notes || item.meta?.notes}</span>
+                            : <span>+ {t('addNote') || 'Add note for kitchen'}</span>}
                         </button>
-                      )}
+                        )}
+                      </div>
                     </div>
 
                     {/* Qty Controls */}
-                    <div className="flex flex-col items-end justify-between flex-shrink-0 gap-3">
+                    <div className="flex flex-col items-end justify-between flex-shrink-0 gap-3" onClick={e => e.stopPropagation()}>
                       <button
                         onClick={() => removeFromCart(item.id)}
                         className="p-1.5 text-white/20 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
@@ -349,7 +370,6 @@ export default function CartPage() {
         </div>
       </main>
 
-      {/* Checkout Dialog */}
       <CheckoutDialog
         isOpen={isCheckoutOpen}
         onClose={() => setIsCheckoutOpen(false)}
@@ -358,6 +378,22 @@ export default function CartPage() {
         subtotal={subtotal}
         totalTax={tax}
       />
+
+      {/* Product Configurator Modal */}
+      {selectedProduct && (
+        <div className='fixed inset-0 z-[200] flex items-center justify-center bg-neutral-950/95 backdrop-blur-xl p-0 md:p-6'>
+          <ProductConfigurator
+            product={selectedProduct}
+            onClose={() => {
+                setSelectedProduct(null)
+                setEditingItemId(null)
+            }}
+            isLoadingDetails={isLoadingDetails}
+            cartItemId={editingItemId || undefined}
+            initialMeta={editingItemId ? cartItems.find(i => i.id === editingItemId)?.meta : undefined}
+          />
+        </div>
+      )}
     </>
   )
 }

@@ -95,7 +95,7 @@ function AuthPageContent() {
             
             // Force a slight delay to ensure AuthContext state is propagated
             setTimeout(() => {
-                router.push('/profile');
+                router.push(callbackUrl);
             }, 100);
         } catch (err: unknown) {
             const error = err as Error;
@@ -122,7 +122,7 @@ function AuthPageContent() {
 
             // Force a slight delay to ensure AuthContext state is propagated
             setTimeout(() => {
-                router.push('/profile');
+                router.push(callbackUrl);
             }, 100);
         } catch (err: unknown) {
             const error = err as Error;
@@ -141,27 +141,27 @@ function AuthPageContent() {
     }
 
     return (
-        <div className="min-h-[80vh] flex items-center justify-center p-4 py-20">
-            <Card className="w-full max-w-md rounded-[2.5rem] shadow-2xl border-none overflow-hidden">
-                <div className="bg-accent-gold p-10 text-white flex flex-col items-center gap-6">
-                    <div className="bg-white/20 p-4 rounded-3xl backdrop-blur-md">
-                        <Utensils className="w-8 h-8" />
+        <div className="min-h-[85vh] flex items-center justify-center p-4 pt-28 pb-12">
+            <Card className="w-full max-w-[440px] rounded-[2rem] shadow-2xl border-none overflow-hidden bg-background">
+                <div className="bg-accent-gold/90 p-6 text-white flex flex-col items-center gap-4">
+                    <div className="bg-white/20 p-3 rounded-2xl backdrop-blur-md">
+                        <Utensils className="w-6 h-6" />
                     </div>
-                    <div className="text-center space-y-2">
-                        <CardTitle className="text-3xl font-bold font-headline">{t('title')}</CardTitle>
-                        <CardDescription className="text-white/80">{t('subtitle')}</CardDescription>
+                    <div className="text-center space-y-1">
+                        <CardTitle className="text-2xl font-bold font-display">{t('title')}</CardTitle>
+                        <CardDescription className="text-white/80 text-xs">{t('subtitle')}</CardDescription>
                     </div>
                 </div>
 
-                <CardContent className="p-10">
+                <CardContent className="p-6 md:p-8">
                     <Tabs defaultValue="login" className="w-full">
-                        <TabsList className="grid w-full grid-cols-2 mb-10 bg-muted/50 p-1.5 rounded-full">
-                            <TabsTrigger value="login" className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-lg py-3 data-[state=active]:text-accent-gold">{t('signIn')}</TabsTrigger>
-                            <TabsTrigger value="register" className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-lg py-3 data-[state=active]:text-accent-gold">{t('signUp')}</TabsTrigger>
+                        <TabsList className="grid w-full grid-cols-2 mb-8 bg-muted/50 p-1 rounded-full">
+                            <TabsTrigger value="login" className="rounded-full data-[state=active]:bg-background data-[state=active]:shadow-sm py-2 text-xs font-bold uppercase tracking-wider data-[state=active]:text-accent-gold">{t('signIn')}</TabsTrigger>
+                            <TabsTrigger value="register" className="rounded-full data-[state=active]:bg-background data-[state=active]:shadow-sm py-2 text-xs font-bold uppercase tracking-wider data-[state=active]:text-accent-gold">{t('signUp')}</TabsTrigger>
                         </TabsList>
 
                         {error && (
-                            <Alert variant="destructive" className="mb-6 rounded-2xl bg-red-50 border-red-100">
+                            <Alert variant="destructive" className="mb-6 rounded-xl bg-red-50 border-red-100">
                                 <AlertCircle className="h-4 w-4" />
                                 <AlertDescription className="text-xs font-medium text-red-600">
                                     {error}
@@ -169,83 +169,83 @@ function AuthPageContent() {
                             </Alert>
                         )}
 
-                        <TabsContent value="login" className="space-y-6">
-                            <form onSubmit={handleLogin} className="space-y-6">
-                                <div className="space-y-2">
-                                    <Label htmlFor="email">{t('email')}</Label>
+                        <TabsContent value="login" className="space-y-4">
+                            <form onSubmit={handleLogin} className="space-y-4">
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="email" className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground ml-1">{t('email')}</Label>
                                     <Input
                                         id="email"
                                         type="email"
                                         placeholder="name@example.com"
-                                        className="rounded-2xl h-14 focus-visible:ring-accent-gold"
+                                        className="rounded-xl h-12 focus-visible:ring-accent-gold border-muted"
                                         value={loginEmail}
                                         onChange={(e) => setLoginEmail(e.target.value)}
                                         required
                                     />
                                 </div>
-                                <div className="space-y-2">
+                                <div className="space-y-1.5">
                                     <div className="flex justify-between">
-                                        <Label htmlFor="password">{t('password')}</Label>
-                                        <button type="button" className="text-xs text-accent-gold font-bold hover:underline">{t('forgot')}</button>
+                                        <Label htmlFor="password" className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground ml-1">{t('password')}</Label>
+                                        <button type="button" className="text-[10px] text-accent-gold font-bold hover:underline uppercase tracking-wider">{t('forgot')}</button>
                                     </div>
                                     <Input
                                         id="password"
                                         type="password"
-                                        className="rounded-2xl h-14 focus-visible:ring-accent-gold"
+                                        className="rounded-xl h-12 focus-visible:ring-accent-gold border-muted"
                                         value={loginPassword}
                                         onChange={(e) => setLoginPassword(e.target.value)}
                                         required
                                     />
                                 </div>
-                                <Button type="submit" className="w-full h-14 rounded-full text-lg shadow-xl bg-accent-gold hover:bg-accent-gold/90 text-primary-foreground" disabled={isLoading}>
+                                <Button type="submit" className="w-full h-12 rounded-full text-sm font-bold uppercase tracking-widest shadow-lg bg-accent-gold hover:bg-accent-gold/90 text-primary-foreground mt-2" disabled={isLoading}>
                                     {isLoading ? t('authenticating') : t('signIn')}
                                 </Button>
                             </form>
                         </TabsContent>
 
-                        <TabsContent value="register" className="space-y-6">
-                            <form onSubmit={handleSignup} className="space-y-6">
-                                <div className="space-y-2">
-                                    <Label htmlFor="full-name">{t('fullName')}</Label>
+                        <TabsContent value="register" className="space-y-4">
+                            <form onSubmit={handleSignup} className="space-y-4">
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="full-name" className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground ml-1">{t('fullName')}</Label>
                                     <Input
                                         id="full-name"
                                         placeholder="John Doe"
-                                        className="rounded-2xl h-14 focus-visible:ring-accent-gold"
+                                        className="rounded-xl h-12 focus-visible:ring-accent-gold border-muted"
                                         value={regName}
                                         onChange={(e) => setRegName(e.target.value)}
                                         required
                                     />
                                 </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="reg-email">{t('email')}</Label>
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="reg-email" className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground ml-1">{t('email')}</Label>
                                     <Input
                                         id="reg-email"
                                         type="email"
                                         placeholder="name@example.com"
-                                        className="rounded-2xl h-14 focus-visible:ring-accent-gold"
+                                        className="rounded-xl h-12 focus-visible:ring-accent-gold border-muted"
                                         value={regEmail}
                                         onChange={(e) => setRegEmail(e.target.value)}
                                         required
                                     />
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="reg-password">{t('password')}</Label>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="reg-password"  className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground ml-1">{t('password')}</Label>
                                         <Input
                                             id="reg-password"
                                             type="password"
-                                            className="rounded-2xl h-14 focus-visible:ring-accent-gold"
+                                            className="rounded-xl h-12 focus-visible:ring-accent-gold border-muted text-xs"
                                             value={regPassword}
                                             onChange={(e) => setRegPassword(e.target.value)}
                                             required
                                         />
                                     </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="confirm-password">{t('confirm')}</Label>
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="confirm-password" className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground ml-1">{t('confirm')}</Label>
                                         <Input
                                             id="confirm-password"
                                             type="password"
-                                            className="rounded-2xl h-14 focus-visible:ring-accent-gold"
+                                            className="rounded-xl h-12 focus-visible:ring-accent-gold border-muted text-xs"
                                             value={confirmPassword}
                                             onChange={(e) => setConfirmPassword(e.target.value)}
                                             required
@@ -253,39 +253,39 @@ function AuthPageContent() {
                                     </div>
                                 </div>
 
-                                <div className="flex items-start space-x-3 pt-2">
-                                    <Checkbox id="terms" className="mt-1 border-accent-gold data-[state=checked]:bg-accent-gold" />
+                                <div className="flex items-start space-x-3 pt-1">
+                                    <Checkbox id="terms" className="mt-0.5 border-accent-gold data-[state=checked]:bg-accent-gold" />
                                     <div className="grid gap-1.5 leading-none">
-                                        <label htmlFor="terms" className="text-xs font-medium text-muted-foreground leading-relaxed cursor-pointer">
+                                        <label htmlFor="terms" className="text-[10px] font-medium text-muted-foreground leading-snug cursor-pointer">
                                             {t('terms')}
                                         </label>
                                     </div>
                                 </div>
 
-                                <Button type="submit" className="w-full h-14 rounded-full text-lg shadow-xl bg-accent-gold hover:bg-accent-gold/90 text-primary-foreground" disabled={isLoading}>
+                                <Button type="submit" className="w-full h-12 rounded-full text-sm font-bold uppercase tracking-widest shadow-lg bg-accent-gold hover:bg-accent-gold/90 text-primary-foreground mt-2" disabled={isLoading}>
                                     {isLoading ? t('creating') : t('joinNow')}
                                 </Button>
                             </form>
                         </TabsContent>
                     </Tabs>
 
-                    <div className="relative my-10">
+                    <div className="relative my-8">
                         <div className="absolute inset-0 flex items-center">
-                            <span className="w-full border-t"></span>
+                            <span className="w-full border-t border-muted"></span>
                         </div>
-                        <div className="relative flex justify-center text-xs uppercase">
-                            <span className="bg-white px-4 text-muted-foreground font-bold">{t('secureGateway')}</span>
+                        <div className="relative flex justify-center text-[10px] uppercase tracking-[0.2em] font-bold">
+                            <span className="bg-background px-4 text-muted-foreground/50">{t('secureGateway')}</span>
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 gap-4">
                         <Button
                             variant="outline"
-                            className="rounded-2xl h-14 gap-2 hover:bg-secondary/30"
+                            className="rounded-xl h-12 gap-3 hover:bg-muted/50 border-muted font-bold text-xs uppercase tracking-widest"
                             onClick={handleGoogleLogin}
                             type="button"
                         >
-                            <GoogleIcon className="w-5 h-5" />
+                            <GoogleIcon className="w-4 h-4" />
                             {t('google')}
                         </Button>
                     </div>

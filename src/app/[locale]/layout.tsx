@@ -10,7 +10,6 @@ import { Navbar } from '@/components/layout/Navbar'
 import { Footer } from '@/components/layout/Footer'
 import { CartProvider } from '@/context/CartContext'
 import { ProductProvider } from '@/context/ProductContext'
-import { CartDrawer } from '@/components/cart/CartDrawer'
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages, setRequestLocale, getTranslations } from 'next-intl/server';
 import { routing } from '@/i18n/routing';
@@ -92,10 +91,13 @@ export default async function RootLayout({
                 <PaymentConfigProvider>
                   <ProductProvider>
                     <CartProvider>
-                      <Navbar />
-                      {children}
-                      <CartDrawer />
-                      <Footer />
+                      <div className="flex flex-col min-h-screen">
+                        <Navbar />
+                        <main className="flex-grow">
+                          {children}
+                        </main>
+                        <Footer />
+                      </div>
                       <Toaster richColors position="top-center" closeButton />
                     </CartProvider>
                   </ProductProvider>

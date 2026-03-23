@@ -121,7 +121,7 @@ export default function DynamicTrackOrderPage() {
                 </div>
                 <h1 className="text-3xl font-bold font-headline">{t('orderNotFound')}</h1>
                 <p className="text-muted-foreground max-w-sm mx-auto">{error || t('orderNotFoundDesc')}</p>
-                <Button variant="outline" className="rounded-full px-8 h-12" onClick={() => router.back()}>
+                <Button variant="outline" className="rounded-full px-8 h-12" onClick={() => router.push('/profile')}>
                     {t('goBack')}
                 </Button>
             </div>
@@ -134,7 +134,7 @@ export default function DynamicTrackOrderPage() {
             <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-6">
                 <div className="space-y-4">
                     <button
-                        onClick={() => router.back()}
+                        onClick={() => router.push('/profile')}
                         className="flex items-center gap-2 text-neutral-400 hover:text-accent-gold transition-colors font-bold text-xs uppercase tracking-widest"
                     >
                         <ChevronLeft size={16} /> {t('backHistory')}

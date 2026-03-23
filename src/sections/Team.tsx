@@ -1,7 +1,7 @@
 'use client'
 import React from 'react';
 import { STAFF } from '@/lib/data';
-import { Instagram, Mail, ArrowUpRight, ArrowRight, Award } from 'lucide-react';
+import { Instagram, Mail, ArrowRight, Award } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useTranslations } from 'next-intl';

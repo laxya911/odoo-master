@@ -43,7 +43,7 @@ export default function TrackLatestOrderPage() {
                         sessionStorage.removeItem('checkout_initiated_at');
                         sessionStorage.removeItem('checkout_session_id');
                         
-                        setTimeout(() => router.push(`/track/${order.id}`), 1000);
+                        setTimeout(() => router.replace(`/track/${order.id}`), 1000);
                         return true;
                     }
                 }

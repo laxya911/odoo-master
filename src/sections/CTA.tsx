@@ -3,18 +3,8 @@ import React from 'react';
 import { Link } from '@/i18n/routing';
 import { useTranslations } from 'next-intl';
 
-interface CTAProps {
-    onNavigateMenu?: () => void;
-}
-
-export const CTA: React.FC<CTAProps> = ({ onNavigateMenu }) => {
+export const CTA: React.FC = () => {
     const t = useTranslations('cta');
-
-    const handleExplore = () => {
-        if (onNavigateMenu) {
-            onNavigateMenu();
-        }
-    };
 
     return (
         <div className="relative">

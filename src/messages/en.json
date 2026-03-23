@@ -39,7 +39,9 @@
         "seo": {
             "title": "RAM - Authentic Himalayan Cuisine",
             "description": "Experience the legendary flavors of the Himalayas in Mito. Authentic Indian and Nepalese dining."
-        }
+        },
+        "initPayment": "Initializing payment...",
+        "loadMore": "Load More"
     },
     "auth": {
         "title": "Member Access",
@@ -158,7 +160,7 @@
     "home": {
         "established": "Authentic Spices since {year}",
         "dining": "Dining",
-        "heritage": "& Nepalese Heritage",
+        "heritage": "& Himalayan Heritage",
         "tagline": "Bringing the warmth of the Himalayas to the heart of Ibaraki for over a decade. Experience artisanal spices and modern Nepali hospitality.",
         "explore": "Explore Menu",
         "takeoutOff": "-10% OFF",
@@ -172,7 +174,7 @@
         "authenticity": "100% Authentic",
         "recipe": "Recipes passed down through generations of master chefs.",
         "featuredDish": "Featured Dish",
-        "viewDetails": "View Details"
+        "viewDetails": "Details"
     },
     "footer": {
         "rights": "All rights reserved.",
@@ -341,7 +343,8 @@
         "checkout": "Checkout",
         "order": "Order Now",
         "closed": "Store Closed",
-        "each": "each"
+        "each": "each",
+        "addNote": "Add note for kitchen"
     },
     "dynamic": {
         "Bacon Burger": "Bacon Burger",

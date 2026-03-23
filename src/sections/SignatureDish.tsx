@@ -1,11 +1,10 @@
 'use client'
-import React, { useState, useCallback } from 'react';
+import React from 'react';
 import dynamic from 'next/dynamic';
 import { useProducts } from '@/context/ProductContext';
 
 import { useProductConfigurator } from '@/hooks/use-product-configurator';
 import { ProductCard } from '@/components/menu/ProductCard';
-import { Product } from '@/lib/types';
 import { useTranslations } from 'next-intl';
 
 const ProductConfigurator = dynamic(() => import('@/components/menu/ProductConfigurator').then(mod => ({ default: mod.ProductConfigurator })), {

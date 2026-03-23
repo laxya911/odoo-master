@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import Image from 'next/image';
+import { FallbackImage } from '@/components/ui/FallbackImage';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Product } from '@/lib/types';
@@ -64,7 +64,7 @@ export const HeroFeatured: React.FC<HeroFeaturedProps> = ({ featured, onOpenConf
   if (featured.length === 0) return null;
 
   const currentProduct = featured[currentIndex];
-  const imageUrl = currentProduct.image_256 ? `data:image/png;base64,${currentProduct.image_256}` : '/images/placeholder-food.jpg';
+  const imageUrl = currentProduct.image_256 ? `data:image/png;base64,${currentProduct.image_256}` : undefined;
 
   const handleCardClick = (e: React.MouseEvent) => {
     // Prevent opening if it was a swipe (more than 10px move)
@@ -99,8 +99,8 @@ export const HeroFeatured: React.FC<HeroFeaturedProps> = ({ featured, onOpenConf
             transition={{ duration: 0.5, ease: [0.23, 1, 0.32, 1] }}
             className="absolute inset-0"
           >
-            <Image
-              src={imageUrl}
+            <FallbackImage
+              src={imageUrl || ''}
               alt={currentProduct.name}
               fill
               className="object-cover opacity-60 transition-transform duration-700 hover:scale-105"

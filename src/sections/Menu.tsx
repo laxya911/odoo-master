@@ -1,15 +1,16 @@
 'use client'
-import React, { useState, useMemo, useCallback } from 'react'
+import React, { useState, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import { useProducts } from '@/context/ProductContext'
 
 import { useProductConfigurator } from '@/hooks/use-product-configurator'
 import { Badge } from '@/components/ui/badge'
-import { Product } from '@/lib/types'
 import { MenuHero } from '@/components/menu/MenuHero'
 import { ProductCard } from '@/components/menu/ProductCard'
+import { AnimatePresence, motion } from 'framer-motion'
 import { useTranslations } from 'next-intl'
 import { useDynamicTranslation } from '@/hooks/use-dynamic-translation'
+import { Button } from '@/components/ui/button'
 
 // Dynamic import for ProductConfigurator to reduce initial bundle
 const ProductConfigurator = dynamic(
@@ -38,11 +39,15 @@ export const Menu: React.FC = () => {
     sessionLoading
   } = useProductConfigurator()
   const t = useTranslations('menu')
+  const commonT = useTranslations('common')
   const { translate } = useDynamicTranslation()
 
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(
     new Set(['All']),
   )
+  const [searchQuery, setSearchQuery] = useState('')
+  const [visibleItems, setVisibleItems] = useState(20)
+  const menuRef = React.useRef<HTMLDivElement>(null)
   const [selectedTags, setSelectedTags] = useState<Set<string>>(
     new Set(['All']),
   )
@@ -116,6 +121,9 @@ export const Menu: React.FC = () => {
     })
   }, [selectedCategories, selectedTags, menuItems, tags, posCategories])
 
+  const sortedItems = [...filteredItems].sort((a, b) => Number(a.sequence || 0) - Number(b.sequence || 0))
+  const displayItems = sortedItems.slice(0, visibleItems)
+  const hasMore = visibleItems < sortedItems.length
 
   return (
     <section className='pt-16 pb-24 bg-neutral-950 relative' id='menu'>
@@ -139,7 +147,7 @@ export const Menu: React.FC = () => {
           </div>
         </header>
 
-        {/* Category Filter */}
+        {/* Filters */}
         <div className='flex flex-col gap-6 mb-12'>
           <div>
             <h3 className='text-white/40 text-[10px] uppercase font-bold tracking-[0.2em] mb-4 ml-1'>
@@ -194,17 +202,53 @@ export const Menu: React.FC = () => {
             ))}
           </div>
         ) : (
-          <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6'>
-            {filteredItems.map((item, index) => (
-              <ProductCard
-                key={item.id}
-                product={item}
-                index={index}
-                isPosOpen={!!isPosOpen}
-                onOpenConfigurator={openConfigurator}
-              />
-            ))}
-          </div>
+          <>
+            <div className='grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-8'>
+              <AnimatePresence mode='popLayout'>
+                {displayItems.length > 0 ? (
+                  displayItems.map((product) => (
+                    <motion.div
+                      key={product.id}
+                      layout
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      transition={{ duration: 0.3 }}
+                    >
+                      <ProductCard
+                        product={product}
+                        isPosOpen={!!isPosOpen}
+                        onOpenConfigurator={openConfigurator}
+                      />
+                    </motion.div>
+                  ))
+                ) : (
+                  <motion.div
+                    layout
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="col-span-full text-center text-white/60 text-lg py-12"
+                  >
+                    {t('noItemsFound')}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {hasMore && (
+              <div className="mt-16 flex justify-center">
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={() => setVisibleItems(prev => prev + 16)}
+                  className="rounded-full px-12 py-6 border-accent-gold text-accent-gold hover:bg-accent-gold hover:text-white transition-all duration-300 font-bold uppercase tracking-[0.2em] text-sm shadow-xl hover:shadow-accent-gold/20"
+                >
+                  {commonT('loadMore') || 'Load More'}
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </div>
 

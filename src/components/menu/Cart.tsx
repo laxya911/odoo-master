@@ -1,6 +1,5 @@
 'use client'
 
-import React, { useEffect, useState, useMemo } from 'react'
 import { useCart } from '@/context/CartContext'
 import {
   ShoppingBag,
@@ -11,27 +10,16 @@ import {
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
-import Image from 'next/image'
+import { FallbackImage } from '../ui/FallbackImage'
 import { toast } from 'sonner'
 import { useCompany } from '@/context/CompanyContext'
 import { useAuth } from '@/context/AuthContext'
 import { useRouter } from 'next/navigation'
 import { useSession } from '@/context/SessionContext'
 import { useProducts } from '@/context/ProductContext'
-import { CheckoutDialog } from './CheckoutDialog'
 import { calculateItemPricing } from '@/lib/pricing-utils'
 import { useTranslations } from 'next-intl'
 import { useDynamicTranslation } from '@/hooks/use-dynamic-translation'
-
-interface ProductTaxData {
-  product_id: number
-  taxes: Array<{
-    id: number
-    name: string
-    amount: number
-    price_include: boolean
-  }>
-}
 
 export function Cart() {
   const t = useTranslations('cart');
@@ -39,12 +27,10 @@ export function Cart() {
   const { translate } = useDynamicTranslation()
   const {
     cartItems,
-    getCartTotal,
     updateItemQuantity,
     removeFromCart,
     clearCart,
     setIsCartOpen,
-    isCheckoutOpen,
     setIsCheckoutOpen,
     getCartBreakdown,
   } = useCart()
@@ -106,11 +92,11 @@ export function Cart() {
               {cartItems.map((item) => (
                 <div key={item.id} className='group flex gap-4 p-2 rounded-xl hover:bg-secondary/30 transition-colors border border-transparent hover:border-border/50'>
                   <div className='relative h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-border/50 bg-secondary/10 -ml-1'>
-                    <Image
+                    <FallbackImage
                       src={
                         item.product.image_256
                           ? `data:image/png;base64,${item.product.image_256}`
-                          : 'https://picsum.photos/seed/fooditem/100'
+                          : ''
                       }
                       alt={translate(item.product.name)}
                       fill

@@ -23,6 +23,7 @@ interface CartContextType {
   addToCart: (product: Product, quantity?: number, meta?: CartItemMeta) => void
   removeFromCart: (cartItemId: string) => void
   updateItemQuantity: (cartItemId: string, quantity: number) => void
+  updateCartItem: (cartItemId: string, quantity: number, meta: CartItemMeta) => void
   updateItemNotes: (cartItemId: string, notes: string) => void
   clearCart: () => void
   getCartTotal: () => number
@@ -234,6 +235,23 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     )
   }, [])
 
+  const updateCartItem = useCallback(
+    (cartItemId: string, quantity: number, meta: CartItemMeta) => {
+      setCartItems((prevItems) => {
+        const item = prevItems.find((p) => p.id === cartItemId)
+        if (!item) return prevItems
+
+        return prevItems.map((p) =>
+          p.id === cartItemId ? { ...p, quantity, meta } : p,
+        )
+      })
+      toast.success(t('added'), {
+        description: t('addedDesc', { product: '' }), // Or specific msg for update
+      })
+    },
+    [t],
+  )
+
   const { taxes, defaultTaxId, currency } = useProducts()
 
   const getCartBreakdown = useCallback(() => {
@@ -298,6 +316,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     addToCart,
     removeFromCart,
     updateItemQuantity,
+    updateCartItem,
     updateItemNotes,
     clearCart,
     getCartTotal,
