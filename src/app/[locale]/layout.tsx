@@ -69,21 +69,12 @@ export default async function RootLayout({
           crossOrigin='anonymous'
 
         />
-        <link rel="preconnect" href="https://js.stripe.com" />
-        <link rel="preconnect" href="https://api.stripe.com" />
-        <link rel="preconnect" href="https://m.stripe.network" />
-        <link rel="preconnect" href="https://q.stripe.com" />
         <link
           href='https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@400;600;700&display=swap'
           rel='stylesheet'
         />
       </head>
       <body className='font-body antialiased bg-foreground'>
-        <Script
-          src="https://js.stripe.com/v3"
-          strategy="afterInteractive"
-          nonce={nonce}
-        />
         <NextIntlClientProvider messages={messages}>
           <CompanyProvider>
             <AuthProvider>

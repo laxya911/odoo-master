@@ -235,6 +235,17 @@ export async function fulfillOdooOrder(
     stripe_session_id: stripePaymentIntentId,
     to_invoice: true,
     notes: notes, // Overall order note for general_customer_note
+    
+    // Delivery Metadata
+    api_source: 'native_web',
+    api_customer_name: customer.name,
+    api_customer_phone: customer.phone,
+    api_delivery_address: `${customer.street || ''}\n${customer.city || ''} ${customer.zip || ''}`.trim(),
+    api_order_notes: notes || '',
+    
+    // Preferred Payment Method Line for Invoice (Stripe = 5)
+    preferred_payment_method_line_id: paymentMethod === 'stripe' ? 5 : null,
+
     stripe_card_brand: payload.stripeCardDetails?.card_brand,
     stripe_card_last4: payload.stripeCardDetails?.card_no,
     stripe_cardholder_name: payload.stripeCardDetails?.cardholder_name,

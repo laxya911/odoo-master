@@ -1,19 +1,3 @@
-// import createMiddleware from 'next-intl/middleware';
-// import {routing} from './i18n/routing';
-
-// export default createMiddleware(routing);
-
-// export const config = {
-//   // Match all pathnames except for
-//   // - /api (API routes)
-//   // - /_next (Next.js internals)
-//   // - /_proxy (if applicable)
-//   // - /static (static files)
-//   // - /favicon.ico, /sitemap.xml, /robots.txt (metadata files)
-//   matcher: ['/((?!api|_next|_proxy|static|favicon.ico|sitemap.xml|robots.txt).*)']
-// };
-
-
 import createMiddleware from "next-intl/middleware"
 import { routing } from "./i18n/routing"
 import { NextRequest, NextResponse } from "next/server"
@@ -45,24 +29,15 @@ export default function proxy(request: NextRequest) {
       "'self'",
       `'nonce-${nonce}'`,
       "'strict-dynamic'",
-      "'unsafe-eval'",
-      "https://js.stripe.com",
-      "https://m.stripe.network",
-      "https://q.stripe.com"
+      "'unsafe-eval'"
     ],
     'connect-src': [
       "'self'",
-      "https://api.stripe.com",
-      "https://m.stripe.network",
-      "https://q.stripe.com",
       "https://demo.primetek.in",
       "wss://demo.primetek.in"
     ],
     'frame-src': [
-      "'self'",
-      "https://js.stripe.com",
-      "https://hooks.stripe.com",
-      "https://m.stripe.network"
+      "'self'"
     ],
     'img-src': [
       "'self'",
@@ -71,7 +46,6 @@ export default function proxy(request: NextRequest) {
       "https://images.unsplash.com",
       "https://*.unsplash.com",
       "https://*.stripe.com",
-      "https://q.stripe.com",
       "https://lh3.googleusercontent.com",
       "https://*.googleusercontent.com",
       "https://demo.primetek.in"
