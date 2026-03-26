@@ -1,14 +1,18 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useStores } from '@/hooks/use-odoo';
 import { odoo } from '@/lib/odoo';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useTranslations } from 'next-intl';
+import { useAuth } from '@/context/AuthContext';
+import Link from 'next/link';
+import { ShieldCheck, LogIn, UserPlus } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -26,25 +30,16 @@ const EVENT_TYPES = ['Birthday', 'Anniversary', 'Corporate', 'Family', 'Other'] 
 export const Booking: React.FC<BookingProps> = ({ onNavigateHome }) => {
   const t = useTranslations('booking');
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const { user, isAuthenticated } = useAuth();
   const initialTab = searchParams.get('tab') === 'party' ? 'party' : 'table';
   const [activeTab, setActiveTab] = useState<'table' | 'party'>(initialTab);
 
-  useEffect(() => {
-    const tab = searchParams.get('tab');
-    if (tab === 'party' || tab === 'table') {
-      setActiveTab(tab);
-    }
-  }, [searchParams]);
-
-  const handleReturnHome = () => {
-    if (onNavigateHome) {
-      onNavigateHome();
-    } else {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  };
-
   const { data: stores, loading: storesLoading } = useStores();
+  const [bookingConfig, setBookingConfig] = useState<any>(null);
+  const [availableSlots, setAvailableSlots] = useState<any[]>([]);
+  const [selectedSlot, setSelectedSlot] = useState<any>(null);
+  const [isLoadingSlots, setIsLoadingSlots] = useState(false);
 
   const [formData, setFormData] = useState({
     branch: '',
@@ -55,32 +50,132 @@ export const Booking: React.FC<BookingProps> = ({ onNavigateHome }) => {
     time: '',
     guests: '2',
     instructions: '',
-    eventType: 'Birthday', // For Party Booking
-    budget: '' // For Party Booking
+    eventType: 'Birthday',
+    budget: ''
   });
 
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // 1. Set default branch if available
+  useEffect(() => {
+    if (stores.length > 0 && !formData.branch) {
+      setFormData(prev => ({ ...prev, branch: stores[0].id }));
+    }
+  }, [stores, formData.branch]);
+
+  // Pre-fill user data when authenticated
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      setFormData(prev => ({
+        ...prev,
+        name: user.name || prev.name,
+        email: user.email || prev.email,
+        phone: user.phone || prev.phone || ''
+      }));
+    }
+  }, [isAuthenticated, user]);
+
+  // 2. Fetch Booking Config
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const res: any = await odoo.getBookingConfig();
+        if (res.status === 'success') {
+          setBookingConfig(res.config);
+          setError(null);
+        } else {
+          setError(res.message || 'Booking is currently unavailable at this location.');
+          setBookingConfig(null);
+        }
+      } catch (err) {
+        console.error('Failed to fetch booking config:', err);
+        setError('Failed to connect to booking system.');
+      }
+    };
+    if (formData.branch) fetchConfig();
+  }, [formData.branch]);
+
+  // 3. Fetch Available Slots
+  useEffect(() => {
+    const fetchSlots = async () => {
+      if (!formData.date || !formData.branch || !bookingConfig) return;
+      
+      setIsLoadingSlots(true);
+      setError(null);
+      try {
+        const res: any = await odoo.getBookingSlots(formData.date, parseInt(formData.guests), bookingConfig.id);
+        if (res.status === 'success') {
+          setAvailableSlots(res.slots);
+          setSelectedSlot(null);
+        } else {
+          setError(res.message);
+          setAvailableSlots([]);
+        }
+      } catch (err) {
+        console.error('Failed to fetch slots:', err);
+        setError('Failed to load available times');
+      } finally {
+        setIsLoadingSlots(false);
+      }
+    };
+
+    const timer = setTimeout(fetchSlots, 500); // Debounce
+    return () => clearTimeout(timer);
+  }, [formData.date, formData.guests, formData.branch, bookingConfig]);
+
+  const handleReturnHome = () => {
+    if (onNavigateHome) {
+      onNavigateHome();
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
   const selectedStore = stores.find(s => s.id === formData.branch) || (stores.length > 0 ? stores[0] : null);
   const today = new Date().toISOString().split('T')[0];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedSlot && activeTab === 'table') {
+      setError('Please select a time slot');
+      return;
+    }
+
     setIsLoading(true);
+    setError(null);
     try {
-      if (activeTab === 'table') {
-        await odoo.createReservation(formData);
+      const payload = {
+        config_id: bookingConfig?.id,
+        party_size: parseInt(formData.guests),
+        customer: {
+          name: formData.name,
+          phone: formData.phone,
+          email: formData.email,
+          notes: activeTab === 'party' 
+            ? `[PARTY: ${formData.eventType}] ${formData.instructions} (Budget: ${formData.budget})`
+            : formData.instructions
+        },
+        slot: selectedSlot || {
+          start_time: `${formData.date} ${formData.time}:00`,
+          end_time: `${formData.date} ${formData.time}:00`, // Placeholder for party
+          tables: []
+        }
+      };
+
+      const res: any = await odoo.createTableBooking(payload);
+      if (res.status === 'success') {
+        toast.success(t('successTitle'));
+        setTimeout(() => {
+          router.push('/dashboard?tab=bookings');
+        }, 1500);
       } else {
-        await odoo.createReservation({
-          ...formData,
-          instructions: `[PARTY: ${formData.eventType}] ${formData.instructions} (Budget: ${formData.budget})`
-        });
+        setError(res.message);
       }
-      setIsSubmitted(true);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (error) {
-      console.error(error);
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'Something went wrong. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -177,8 +272,15 @@ export const Booking: React.FC<BookingProps> = ({ onNavigateHome }) => {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid md:grid-cols-2 gap-6">
+            {isAuthenticated ? (
+              <form onSubmit={handleSubmit} className="space-y-6">
+                {error && (
+                  <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 text-sm">
+                    {error}
+                  </div>
+                )}
+                
+                <div className="grid md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <Label htmlFor="booking-branch">{t('branchLabel')}</Label>
                   <select
@@ -199,7 +301,7 @@ export const Booking: React.FC<BookingProps> = ({ onNavigateHome }) => {
                     type="number"
                     name="guests"
                     min={activeTab === 'table' ? "1" : "10"}
-                    max="100"
+                    max={bookingConfig?.max_party_size || "20"}
                     value={formData.guests}
                     onChange={handleChange}
                   />
@@ -246,11 +348,47 @@ export const Booking: React.FC<BookingProps> = ({ onNavigateHome }) => {
                   <Label>{t('dateLabel')}</Label>
                   <Input type="date" name="date" min={today} value={formData.date} onChange={handleChange} required />
                 </div>
-                <div className="space-y-2">
-                  <Label>{t('timeLabel')}</Label>
-                  <Input type="time" name="time" value={formData.time} onChange={handleChange} required />
-                </div>
+                {activeTab === 'party' && (
+                  <div className="space-y-2">
+                    <Label>{t('timeLabel')}</Label>
+                    <Input type="time" name="time" value={formData.time} onChange={handleChange} required />
+                  </div>
+                )}
               </div>
+
+              {/* Slot Selection for Table Booking */}
+              {activeTab === 'table' && formData.date && (
+                <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
+                  <Label>{t('availableSlots') || 'Select Time'}</Label>
+                  {isLoadingSlots ? (
+                    <div className="flex items-center gap-2 text-white/40 text-sm">
+                      <div className="w-4 h-4 border-2 border-accent-gold border-t-transparent rounded-full animate-spin" />
+                      Checking availability...
+                    </div>
+                  ) : availableSlots.length > 0 ? (
+                    <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                      {availableSlots.map((slot) => (
+                        <button
+                          key={slot.time}
+                          type="button"
+                          onClick={() => setSelectedSlot(slot)}
+                          className={`py-2 text-xs rounded-lg border transition-all ${
+                            selectedSlot?.time === slot.time
+                              ? 'bg-accent-gold border-accent-gold text-primary font-bold tray-shadow'
+                              : 'bg-white/5 border-white/10 text-white/60 hover:border-accent-gold/50'
+                          }`}
+                        >
+                          {slot.time}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-red-400 text-sm italic">
+                      {formData.date ? 'No tables available for this date/party size.' : 'Select a date first.'}
+                    </p>
+                  )}
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label>{t('nameLabel')}</Label>
@@ -280,16 +418,44 @@ export const Booking: React.FC<BookingProps> = ({ onNavigateHome }) => {
                 />
               </div>
 
-              <div className="pt-4">
-                <Button
-                  type="submit"
-                  className="w-full py-6 rounded-2xl bg-accent-gold  font-bold tracking-widest uppercase hover:scale-105 transition-transform shadow-xl shadow-accent-gold/20"
-                  disabled={isLoading || storesLoading}
-                >
-                  {isLoading ? t('processing') : activeTab === 'table' ? t('submitTable') : t('submitParty')}
-                </Button>
+                <div className="pt-4">
+                  <Button
+                    type="submit"
+                    className="w-full py-6 rounded-2xl bg-accent-gold  font-bold tracking-widest uppercase hover:scale-105 transition-transform shadow-xl shadow-accent-gold/20"
+                    disabled={isLoading || storesLoading || (activeTab === 'table' && !selectedSlot)}
+                  >
+                    {isLoading ? t('processing') : activeTab === 'table' ? t('submitTable') : t('submitParty')}
+                  </Button>
+                </div>
+              </form>
+            ) : (
+              <div className="py-12 text-center animate-in fade-in slide-in-from-bottom-4 duration-700">
+                <div className="w-20 h-20 bg-accent-gold/10 rounded-full flex items-center justify-center mx-auto mb-8 border border-accent-gold/20">
+                  <ShieldCheck className="w-10 h-10 text-accent-gold" />
+                </div>
+                <h2 className="text-2xl font-display font-bold text-white mb-4 italic">
+                  {t('loginRequired')}
+                </h2>
+                <p className="text-white/60 mb-10 max-w-sm mx-auto leading-relaxed">
+                  {t('loginRequiredDesc')}
+                </p>
+                
+                <div className="flex flex-col gap-4">
+                  <Button asChild className="w-full py-6 rounded-2xl bg-accent-gold text-primary font-bold uppercase tracking-widest hover:scale-105 transition-transform shadow-lg shadow-accent-gold/20">
+                    <Link href="/auth?callbackUrl=/booking">
+                      <LogIn className="w-5 h-5 mr-2" />
+                      {t('signIn')}
+                    </Link>
+                  </Button>
+                  <Button asChild variant="outline" className="w-full py-6 rounded-2xl border-white/10 text-white hover:bg-white/5 uppercase tracking-widest text-xs font-bold">
+                    <Link href="/auth?mode=signup&callbackUrl=/booking">
+                      <UserPlus className="w-5 h-5 mr-2" />
+                      {t('createAccount')}
+                    </Link>
+                  </Button>
+                </div>
               </div>
-            </form>
+            )}
           </div>
         </div>
       </div>

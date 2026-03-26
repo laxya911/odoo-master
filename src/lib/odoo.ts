@@ -44,11 +44,41 @@ class OdooClient {
     return this.request<{ isOpen: boolean }>('/restaurant/status');
   }
 
-  async createReservation(data: Record<string, unknown>) {
-    return this.request('/restaurant/reservations', {
+  async getBookingConfig(posConfigId?: string) {
+    return this.request('/restaurant/booking/config', {
+      method: 'POST',
+      body: JSON.stringify({ pos_config_id: posConfigId }),
+    });
+  }
+
+  async getBookingSlots(date: string, partySize: number, configId: number) {
+    return this.request('/restaurant/booking/slots', {
+      method: 'POST',
+      body: JSON.stringify({ date, party_size: partySize, config_id: configId }),
+    });
+  }
+
+  async createTableBooking(data: Record<string, unknown>) {
+    return this.request('/restaurant/booking/create', {
       method: 'POST',
       body: JSON.stringify(data),
     });
+  }
+
+  async cancelTableBooking(token: string) {
+    return this.request('/restaurant/booking/cancel', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    });
+  }
+
+  async createReservation(data: Record<string, unknown>) {
+    // Keep legacy for compatibility if needed, but point to new create if possible
+    return this.createTableBooking(data);
+  }
+
+  async getCustomerActivities(email: string) {
+    return this.request(`/customer/activities?email=${encodeURIComponent(email)}`);
   }
 
   async createOrder(cart: Record<string, unknown>) {

@@ -249,7 +249,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               {isAuthenticated ? (
                 <div className='flex items-center gap-6'>
                   <Link
-                    href='/profile'
+                    href='/dashboard'
                     className='flex items-center gap-3 group/profile'
                   >
                     <div className='w-9 h-9 rounded-full bg-white/10 flex items-center justify-center group-hover/profile:bg-accent-gold transition-colors overflow-hidden'>
@@ -394,7 +394,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   {isAuthenticated ? (
                     <div className='flex flex-col gap-4'>
                       <Link
-                        href='/profile'
+                        href='/dashboard'
                         onClick={() => setIsMenuOpen(false)}
                         className='flex items-center justify-between p-4 rounded-xl bg-white/5'
                       >

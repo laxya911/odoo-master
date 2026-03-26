@@ -12,14 +12,16 @@ export async function GET(
   try {
     const { id: idStr } = await params
     const id = parseInt(idStr, 10)
+    let domain: any[] = [['id', '=', id]]
 
-    if (isNaN(id)) {
-      return NextResponse.json({ error: 'Invalid order ID' }, { status: 400 })
+    // If ID is not a number or doesn't match the original string (meaning it's a reference like 260-4-001 or Order-XXX)
+    if (isNaN(id) || String(id) !== idStr) {
+      domain = ['|', ['pos_reference', '=', idStr], ['name', '=', idStr]]
     }
 
     // 1. Fetch Order
     const orders = await odooCall<PosOrder[]>('pos.order', 'search_read', {
-      domain: [['id', '=', id]],
+      domain,
       fields: ['id', 'name', 'date_order', 'amount_total', 'amount_tax', 'state', 'partner_id', 'lines', 'pos_reference', 'account_move', 'delivery_status'],
       limit: 1,
     })

@@ -100,7 +100,7 @@ export class StripeAdapter implements PaymentProvider {
             ],
             mode: 'payment',
             customer: customerId,
-            success_url: `${origin}/track/latest?success=true&session_id={CHECKOUT_SESSION_ID}&created_at=${encodeURIComponent(odooTimestamp)}`,
+            success_url: `${origin}/dashboard?tab=orders&success=true&session_id={CHECKOUT_SESSION_ID}&created_at=${encodeURIComponent(odooTimestamp)}`,
             cancel_url: `${origin}/cart?canceled=true`,
             metadata: metadata,
             payment_intent_data: {

@@ -45,7 +45,7 @@ function AuthPageContent() {
     const [hasCheckedInitialAuth, setHasCheckedInitialAuth] = useState(false);
     const [isInitialAuth, setIsInitialAuth] = useState(false);
 
-    const callbackUrl = searchParams.get('callbackUrl') || '/profile';
+    const callbackUrl = searchParams.get('callbackUrl') || '/dashboard';
     const errorParam = searchParams.get('error');
     const t = useTranslations('auth');
 

@@ -25,9 +25,9 @@ export class RazorpayAdapter implements PaymentProvider {
         const currency = await getCompanyCurrency();
 
         // Create a Payment Link (Razorpay's hosted checkout)
-        const paymentLink = await this.razorpay.paymentLink.create({
-            amount: toSmallestUnit(amount_total, currency),
-            currency: currency,
+        const paymentLink = await (this.razorpay.paymentLink.create({
+            amount: toSmallestUnit(amount_total, currency.decimal_places),
+            currency: currency.name.toUpperCase(),
             accept_partial: false,
             reference_id: orderId,
             description: `Order from RAM & CO.`,
@@ -50,14 +50,40 @@ export class RazorpayAdapter implements PaymentProvider {
                 notes: body.customer_note || '',
                 provider: 'razorpay'
             },
-            callback_url: `${origin}/track/latest?success=true&order_id=${orderId}`,
+            callback_url: `${origin}/dashboard?tab=orders&success=true&order_id=${orderId}`,
             callback_method: 'get',
-        });
+        }) as any);
 
         return {
             url: paymentLink.short_url,
             sessionId: paymentLink.id
         };
+    }
+
+    async retrieveSession(sessionId: string): Promise<WebhookResult> {
+        try {
+            const paymentLink = await (this.razorpay.paymentLink.fetch(sessionId) as any);
+            
+            if (paymentLink.status === 'paid') {
+                return {
+                    success: true,
+                    providerReference: paymentLink.id,
+                    orderId: paymentLink.reference_id,
+                };
+            }
+            
+            return {
+                success: false,
+                providerReference: paymentLink.id,
+                error: `Payment link status: ${paymentLink.status}`,
+            };
+        } catch (error: any) {
+            return {
+                success: false,
+                providerReference: sessionId,
+                error: error.message || 'Failed to retrieve payment link',
+            };
+        }
     }
 
     async verifyWebhook(

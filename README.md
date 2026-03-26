@@ -1,6 +1,6 @@
 # 🏔️ Himalayan Heritage | Odoo-Powered Restaurant Platform
 
-[![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=next.js)](https://nextjs.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)](https://nextjs.org/)
 [![Odoo](https://img.shields.io/badge/Odoo-19%20Community-purple?logo=odoo)](https://www.odoo.com/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-CSS-blue?logo=tailwind-css)](https://tailwindcss.com/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?logo=typescript)](https://www.typescriptlang.org/)
@@ -29,7 +29,8 @@ A premium, high-performance web platform for modern restaurants, seamlessly inte
 - **Direct POS Injection**: Orders are pushed directly into Odoo POS sessions using a custom Python API.
 - **Metadata Synchronization**: Captures critical delivery info (API Source, Customer Details, Delivery Notes) for admin visibility.
 - **Automated Invoicing**: Generates Odoo invoices with linked "Preferred Payment Methods".
-
+### 📅 Booking & Reservations
+- **Direct Odoo Integration**: Seamless table booking synced with Odoo's Calendar and Resource modules.
 ---
 
 ## 🚀 Tech Stack
@@ -44,8 +45,6 @@ A premium, high-performance web platform for modern restaurants, seamlessly inte
 
 ## 🔮 Future Roadmap
 
-### 📅 Booking & Reservations
-- **Direct Odoo Integration**: Seamless table booking synced with Odoo's Calendar and Resource modules.
 - **Status Tracking**: Real-time availability checks and automated confirmation emails.
 
 ### 🤝 Advanced CRM & CRM Integration

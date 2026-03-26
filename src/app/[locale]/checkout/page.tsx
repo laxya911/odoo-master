@@ -86,7 +86,7 @@ export default function CheckoutPage() {
                     sessionStorage.setItem('checkout_initiated_at', odooTimestamp);
                     sessionStorage.setItem('checkout_session_id', data.sessionId || '');
                     
-                    window.location.href = data.url; // Redirect to Stripe
+                    window.location.href = data.url;
                     return;
                 } else {
                     throw new Error(data.error || 'Failed to initialize checkout session');
@@ -119,7 +119,7 @@ export default function CheckoutPage() {
                     description: t('payOnDelivery'),
                 });
                 clearCart();
-                router.push('/track/latest');
+                router.push('/dashboard?tab=orders&success=true');
             }
         } catch (error) {
             const err = error as Error;
