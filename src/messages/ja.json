@@ -214,6 +214,7 @@
         "title": "メニュー",
         "digitalConcierge": "デジタルコンシェルジュ",
         "closed": "現在、注文受付時間外です",
+        "noItemsFound": "選択内容に一致する商品はありません。",
         "categories": "カテゴリー",
         "diets": "食事の好み",
         "all": "すべて",
@@ -452,6 +453,7 @@
         "Alcohol": "アルコール"
     },
     "checkout": {
+        "saveAddress": "将来の注文のためにこの住所を保存する",
         "title": "チェックアウト",
         "orderSummary": "注文内容",
         "bagEmpty": "ショッピングカートは空です",

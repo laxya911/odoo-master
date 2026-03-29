@@ -36,6 +36,7 @@ export default function CheckoutPage() {
         phone: user?.phone || '',
         country: 'India'
     });
+    const [saveAddress, setSaveAddress] = useState(false);
 
     useEffect(() => {
         if (user) {
@@ -46,6 +47,33 @@ export default function CheckoutPage() {
                 zip: user.zip || prev.zip,
                 phone: user.phone || prev.phone
             }));
+
+            // If profile address is missing, try to fetch from last order
+            if (!user.street && user.email) {
+                const fetchLastOrderAddress = async () => {
+                    try {
+                        const res = await fetch(`/api/odoo/restaurant/orders/history?email=${user.email}&limit=1`);
+                        const data = await res.json();
+                        if (data.data && data.data[0]) {
+                            const lastOrder = data.data[0];
+                            // Note: We need to ensure the API returns partner details or address
+                            // If the history API returns partner_detail, we use it
+                            if (lastOrder.partner_detail) {
+                                setAddress(prev => ({
+                                    ...prev,
+                                    street: lastOrder.partner_detail.street || prev.street,
+                                    city: lastOrder.partner_detail.city || prev.city,
+                                    zip: lastOrder.partner_detail.zip || prev.zip,
+                                    phone: lastOrder.partner_detail.phone || prev.phone
+                                }));
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Failed to fetch last order address:', e);
+                    }
+                };
+                fetchLastOrderAddress();
+            }
         }
     }, [user]);
 
@@ -86,6 +114,11 @@ export default function CheckoutPage() {
                     sessionStorage.setItem('checkout_initiated_at', odooTimestamp);
                     sessionStorage.setItem('checkout_session_id', data.sessionId || '');
                     
+                    if (saveAddress) {
+                        sessionStorage.setItem('save_address_on_success', 'true');
+                        sessionStorage.setItem('pending_address', JSON.stringify(address));
+                    }
+                    
                     window.location.href = data.url;
                     return;
                 } else {
@@ -114,6 +147,22 @@ export default function CheckoutPage() {
                 });
 
                 if (!response.ok) throw new Error('Failed to create cash order');
+
+                // Save address if requested
+                if (saveAddress && user?.email) {
+                    try {
+                        await fetch('/api/odoo/restaurant/profile/update', {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                ...address,
+                                email: user.email
+                            })
+                        });
+                    } catch (e) {
+                        console.error('Failed to save address:', e);
+                    }
+                }
 
                 toast.success(t('orderPlaced'), {
                     description: t('payOnDelivery'),
@@ -208,6 +257,20 @@ export default function CheckoutPage() {
                                     onChange={(e) => setAddress({ ...address, phone: e.target.value })}
                                 />
                             </div>
+                            {user && (
+                                <div className="md:col-span-2 flex items-center space-x-3 pt-2">
+                                    <input 
+                                        type="checkbox" 
+                                        id="save-address" 
+                                        checked={saveAddress}
+                                        onChange={(e) => setSaveAddress(e.target.checked)}
+                                        className="w-5 h-5 rounded border-gray-300 text-accent-gold focus:ring-accent-gold cursor-pointer"
+                                    />
+                                    <Label htmlFor="save-address" className="text-sm font-medium cursor-pointer text-muted-foreground select-none">
+                                        {translate('checkout.saveAddress') || 'Save this address for future use'}
+                                    </Label>
+                                </div>
+                            )}
                         </div>
                     </section>
 

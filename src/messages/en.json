@@ -122,6 +122,7 @@
         "fetchingDetails": "Fetching Details..."
     },
     "track": {
+        "wait": "Wait",
         "title": "Live Tracking",
         "orderId": "ORDER ID",
         "estDelivery": "Estimated Delivery",
@@ -214,6 +215,7 @@
         "title": "Our Menu",
         "digitalConcierge": "Digital Concierge",
         "closed": "Ordering Currently Closed",
+        "noItemsFound": "No items match your selection.",
         "categories": "Categories",
         "diets": "Dietary Preference",
         "all": "All",
@@ -454,6 +456,7 @@
         "Alcohol": "Alcohol"
     },
     "checkout": {
+        "saveAddress": "Save this address for future orders",
         "title": "Checkout",
         "orderSummary": "Order Summary",
         "bagEmpty": "Your bag is empty",
@@ -500,6 +503,7 @@
         "initPayment": "Initializing payment..."
     },
     "myBookings": {
+        "no_show": "No Show",
         "title": "My Activities",
         "subtitle": "Manage your reservations and orders",
         "bookings": "Table Bookings",

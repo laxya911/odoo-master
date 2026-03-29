@@ -107,7 +107,26 @@ export const Booking: React.FC<BookingProps> = ({ onNavigateHome }) => {
       try {
         const res: any = await odoo.getBookingSlots(formData.date, parseInt(formData.guests), bookingConfig.id);
         if (res.status === 'success') {
-          setAvailableSlots(res.slots);
+          // Filter out past slots if today is selected
+          let slots = res.slots || [];
+          const tzDate = new Date();
+          const todayStr = `${tzDate.getFullYear()}-${String(tzDate.getMonth() + 1).padStart(2, '0')}-${String(tzDate.getDate()).padStart(2, '0')}`;
+          const isToday = formData.date === todayStr;
+          
+          if (isToday) {
+            const now = tzDate;
+            const currentHour = now.getHours();
+            const currentMin = now.getMinutes();
+            
+            slots = slots.filter((slot: any) => {
+              const [sHour, sMin] = slot.time.split(':').map(Number);
+              if (sHour > currentHour) return true;
+              if (sHour === currentHour && sMin > currentMin + 15) return true; // 15 min buffer
+              return false;
+            });
+          }
+          
+          setAvailableSlots(slots);
           setSelectedSlot(null);
         } else {
           setError(res.message);
@@ -134,7 +153,8 @@ export const Booking: React.FC<BookingProps> = ({ onNavigateHome }) => {
   };
 
   const selectedStore = stores.find(s => s.id === formData.branch) || (stores.length > 0 ? stores[0] : null);
-  const today = new Date().toISOString().split('T')[0];
+  const tzDate = new Date();
+  const today = `${tzDate.getFullYear()}-${String(tzDate.getMonth() + 1).padStart(2, '0')}-${String(tzDate.getDate()).padStart(2, '0')}`;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -236,18 +256,25 @@ export const Booking: React.FC<BookingProps> = ({ onNavigateHome }) => {
                 {activeTab === 'table' ? t('desc') : t('partyDesc')}
               </p>
             </header>
-            {selectedStore && (
-              <Card className="max-w-md">
-                <CardHeader><Label>{t('hoursTitle')}</Label></CardHeader>
-                <CardContent>
-                  <div className="flex justify-between py-3 border-b border-white/5">
-                    <span className="text-white/40 text-sm">{t('lunch')}</span>
-                    <span className="text-accent-gold font-bold">{selectedStore?.hours.lunch}</span>
-                  </div>
-                  <div className="flex justify-between py-3">
-                    <span className="text-white/40 text-sm">{t('dinner')}</span>
-                    <span className="text-accent-gold font-bold">{selectedStore?.hours.dinner}</span>
-                  </div>
+            {bookingConfig && (
+              <Card className="max-w-md mt-8 border-white/5 bg-neutral-900/50 backdrop-blur-xl rounded-[2.5rem]">
+                <CardHeader className="pb-2">
+                  <Label className="text-accent-gold uppercase tracking-widest text-[10px] font-black">{t('hoursTitle')}</Label>
+                </CardHeader>
+                <CardContent className="space-y-1">
+                  {bookingConfig.periods?.map((period: any, idx: number) => {
+                    const formatTime = (f: number) => {
+                      const h = Math.floor(f);
+                      const m = Math.round((f - h) * 60);
+                      return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+                    };
+                    return (
+                      <div key={idx} className="flex justify-between py-3 border-b border-white/5 last:border-0">
+                        <span className="text-white/40 text-xs font-medium">{period.name}</span>
+                        <span className="text-accent-gold font-bold text-sm tracking-tight">{formatTime(period.open)} - {formatTime(period.close)}</span>
+                      </div>
+                    );
+                  })}
                 </CardContent>
               </Card>
             )}

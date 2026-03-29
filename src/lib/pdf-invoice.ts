@@ -8,71 +8,119 @@ export function generateInvoice(orderData: any) {
   const { order } = orderData;
   if (!order) return;
 
-  let invoiceNum = order.pos_reference || order.name;
+  let invoiceNum = order.pos_reference || order.name || 'DRAFT';
   if (order.account_move && Array.isArray(order.account_move) && order.account_move[1]) {
     invoiceNum = order.account_move[1];
   }
-  const date = new Date(order.date_order);
-  const formattedDate = format(date, 'MM/dd/yyyy');
+  const date = order.date_order ? new Date(order.date_order) : new Date();
+  const formattedDate = format(date, 'MMMM dd, yyyy');
 
-  // Colors
-  const primaryColor: [number, number, number] = [30, 41, 59]; // slate-800
-  const secondaryColor: [number, number, number] = [100, 116, 139]; // slate-500
-  const accentColor: [number, number, number] = [212, 175, 55]; // gold
+  // Colors - Premium Palette
+  const primaryColor: [number, number, number] = [10, 10, 10]; // Near black
+  const secondaryColor: [number, number, number] = [80, 80, 80]; // Medium gray
+  const accentColor: [number, number, number] = [184, 148, 88]; // Metallic Gold
+  const lightGray: [number, number, number] = [245, 245, 245];
+
+  // --- Background Accents ---
+  doc.setFillColor(...lightGray);
+  doc.rect(0, 0, 210, 40, 'F');
+  
+  doc.setDrawColor(...accentColor);
+  doc.setLineWidth(1.5);
+  doc.line(14, 40, 196, 40);
 
   // --- Header ---
-  doc.setFontSize(24);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(28);
   doc.setTextColor(...primaryColor);
-  doc.text('INVOICE', 14, 25);
-
-  doc.setFontSize(10);
-  doc.setTextColor(...secondaryColor);
-  doc.text(`Invoice Number: ${invoiceNum}`, 14, 32);
-  doc.text(`Date: ${formattedDate}`, 14, 37);
-  doc.text(`Status: ${order.state.toUpperCase()}`, 14, 42);
-
-  // --- Company Details (Right side) ---
-  doc.setFontSize(14);
-  doc.setTextColor(...primaryColor);
-  doc.text('RAM & CO.', 140, 25);
-  doc.setFontSize(10);
-  doc.setTextColor(...secondaryColor);
-  doc.text('123 Culinary Ave.', 140, 32);
-  doc.text('Tokyo, Japan 100-0001', 140, 37);
-  doc.text('Phone: +81 3-1234-5678', 140, 42);
-  doc.text('Email: info@ramandco.com', 140, 47);
-
-  // --- Customer Details ---
-  const partner = order.partner_detail;
-  doc.setFontSize(12);
-  doc.setTextColor(...primaryColor);
-  doc.text('Billed To:', 14, 55);
+  doc.text('RAM & CO.', 14, 25);
   
   doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
   doc.setTextColor(...secondaryColor);
-  let startY = 62;
+  doc.text('AUTHENTIC HIMALAYAN CUISINE', 14, 32);
+
+  // --- Invoice Info (Right Header) ---
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(20);
+  doc.setTextColor(...accentColor);
+  doc.text('INVOICE', 196, 25, { align: 'right' });
+  
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(...secondaryColor);
+  doc.text(`${invoiceNum}`, 196, 32, { align: 'right' });
+
+  // --- Address Details ---
+  let currentY = 55;
+  
+  // From (Company)
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(...primaryColor);
+  doc.text('FROM:', 14, currentY);
+  
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(...secondaryColor);
+  doc.text('RAM & CO. Restaurants', 14, currentY + 6);
+  doc.text('3-3-16 Minami-cho,山口 Bldg 1F', 14, currentY + 11);
+  doc.text('Mito City, Ibaraki, Japan', 14, currentY + 16);
+  doc.text('Phone: +81 29-231-1510', 14, currentY + 21);
+
+  // To (Customer)
+  const partner = order.partner_detail || order.partner_id;
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(...primaryColor);
+  doc.text('BILLED TO:', 120, currentY);
+  
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(...secondaryColor);
+  let customerName = 'Walk-in Customer';
+  let email = '';
+  let phone = '';
+  let fullAddress = '';
+
   if (partner) {
-    doc.text(partner.name || 'Walk-in Customer', 14, startY);
-    if (partner.email) {
-      startY += 5;
-      doc.text(partner.email, 14, startY);
+    if (typeof partner === 'object') {
+        customerName = partner.name || customerName;
+        email = partner.email || '';
+        phone = partner.phone || '';
+        fullAddress = [partner.street, partner.city, partner.zip].filter(Boolean).join(', ');
+    } else if (Array.isArray(partner) && partner[1]) {
+        customerName = partner[1];
     }
-    if (partner.phone) {
-      startY += 5;
-      doc.text(partner.phone, 14, startY);
-    }
-    let address = [partner.street, partner.city, partner.zip].filter(Boolean).join(', ');
-    if (address) {
-      startY += 5;
-      doc.text(address, 14, startY);
-    }
-  } else {
-    doc.text('Walk-in Customer', 14, startY);
   }
 
-  // --- Table ---
+  doc.text(customerName, 120, currentY + 6);
+  let customerY = currentY + 11;
+  if (email) { doc.text(email, 120, customerY); customerY += 5; }
+  if (phone) { doc.text(phone, 120, customerY); customerY += 5; }
+  if (fullAddress) { 
+    const splitAddress = doc.splitTextToSize(fullAddress, 70);
+    doc.text(splitAddress, 120, customerY);
+  }
+
+  // --- Dates ---
+  currentY = 100;
+  doc.setFillColor(...lightGray);
+  doc.rect(14, currentY, 182, 12, 'F');
+  
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(...primaryColor);
+  doc.text('DATE ISSUED', 20, currentY + 8);
+  doc.text('ORDER REFERENCE', 80, currentY + 8);
+  doc.text('PAYMENT STATUS', 140, currentY + 8);
+  
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(...secondaryColor);
+  doc.text(formattedDate, 20, currentY + 18);
+  doc.text(order.pos_reference || order.name || '-', 80, currentY + 18);
+  doc.text((order.state || 'DRAFT').toUpperCase(), 140, currentY + 18);
+
+  // --- Items Table ---
   const tableData = (order.line_items || []).map((line: any) => {
-    let name = line.full_product_name || line.product_id[1];
+    let name = line.full_product_name || (Array.isArray(line.product_id) ? line.product_id[1] : line.product_uuid || 'Unknown Product');
     if (line.customer_note) {
       name += `\nNote: ${line.customer_note}`;
     } else if (line.note && !line.note.startsWith('[')) {
@@ -81,24 +129,27 @@ export function generateInvoice(orderData: any) {
     return [
       name,
       line.qty,
-      `¥${line.price_unit.toLocaleString()}`,
-      `¥${line.price_subtotal_incl.toLocaleString()}`
+      `¥${(line.price_unit || 0).toLocaleString()}`,
+      `¥${(line.price_subtotal_incl || 0).toLocaleString()}`
     ];
   });
 
   autoTable(doc, {
-    startY: startY + 12,
+    startY: 130,
     head: [['Description', 'Qty', 'Unit Price', 'Amount']],
     body: tableData,
-    theme: 'grid',
+    theme: 'striped',
     headStyles: {
-      fillColor: accentColor,
+      fillColor: primaryColor,
       textColor: [255, 255, 255],
       fontStyle: 'bold',
+      fontSize: 10,
+      halign: 'left'
     },
     styles: {
-      fontSize: 10,
+      fontSize: 9,
       cellPadding: 6,
+      overflow: 'linebreak'
     },
     columnStyles: {
       0: { cellWidth: 100 },
@@ -106,42 +157,51 @@ export function generateInvoice(orderData: any) {
       2: { halign: 'right' },
       3: { halign: 'right' },
     },
-    margin: { top: 10 },
+    margin: { left: 14, right: 14 },
   });
 
   // --- Totals ---
   // @ts-ignore
-  const finalY = doc.lastAutoTable.finalY + 10;
+  let finalY = doc.lastAutoTable.finalY + 15;
   
+  const amountTotal = order.amount_total || 0;
+  const amountTax = order.amount_tax || 0;
+  const amountSubtotal = amountTotal - amountTax;
+
   doc.setFontSize(10);
   doc.setTextColor(...secondaryColor);
-  doc.text('Subtotal:', 140, finalY);
-  doc.text('Tax:', 140, finalY + 6);
-  
-  doc.setFontSize(12);
-  doc.setTextColor(...primaryColor);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Total:', 140, finalY + 14);
-
-  // Align values to right
-  const subtotalStr = `¥${(order.amount_total - order.amount_tax).toLocaleString()}`;
-  const taxStr = `¥${order.amount_tax.toLocaleString()}`;
-  const totalStr = `¥${order.amount_total.toLocaleString()}`;
-
   doc.setFont('helvetica', 'normal');
-  doc.text(subtotalStr, 196, finalY, { align: 'right' });
-  doc.text(taxStr, 196, finalY + 6, { align: 'right' });
+  doc.text('Subtotal:', 140, finalY);
+  doc.text(`¥${amountSubtotal.toLocaleString()}`, 196, finalY, { align: 'right' });
   
+  doc.text('Tax:', 140, finalY + 8);
+  doc.text(`¥${amountTax.toLocaleString()}`, 196, finalY + 8, { align: 'right' });
+
+  doc.setDrawColor(...lightGray);
+  doc.line(135, finalY + 12, 196, finalY + 12);
+  
+  doc.setFontSize(14);
+  doc.setTextColor(...accentColor);
   doc.setFont('helvetica', 'bold');
-  doc.text(totalStr, 196, finalY + 14, { align: 'right' });
+  doc.text('TOTAL:', 140, finalY + 20);
+  doc.text(`¥${amountTotal.toLocaleString()}`, 196, finalY + 20, { align: 'right' });
 
   // --- Footer ---
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(9);
   doc.setTextColor(...secondaryColor);
-  const footerY = doc.internal.pageSize.getHeight() - 20;
-  doc.text('Thank you for your business!', 105, footerY, { align: 'center' });
+  const footerY = doc.internal.pageSize.getHeight() - 25;
+  
+  doc.setDrawColor(...accentColor);
+  doc.setLineWidth(0.5);
+  doc.line(14, footerY - 5, 196, footerY - 5);
+  
+  doc.text('Thank you for choosing RAM & CO. We look forward to serving you again!', 105, footerY + 5, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.text('This is a computer-generated invoice and does not require a signature.', 105, footerY + 12, { align: 'center' });
 
   // Save the PDF
-  doc.save(`Invoice_${invoiceNum.replace(/\W+/g, '_')}.pdf`);
+  const safeRef = (invoiceNum || 'Invoice').replace(/\W+/g, '_');
+  doc.save(`${safeRef}.pdf`);
 }

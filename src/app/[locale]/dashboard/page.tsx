@@ -90,6 +90,31 @@ export default function DashboardPage() {
     const [isLoadingActivities, setIsLoadingActivities] = useState(true);
     const [cancellingBookingId, setCancellingBookingId] = useState<number | null>(null);
 
+    const [bookingFilter, setBookingFilter] = useState<'upcoming' | 'previous'>('upcoming');
+    const [bookingPage, setBookingPage] = useState(0);
+    const bookingsPerPage = 8;
+
+    const filteredBookings = useMemo(() => {
+        const now = new Date();
+        let list = activities.bookings.filter(b => {
+            const isPast = new Date(b.start_time) < now;
+            return bookingFilter === 'upcoming' ? !isPast : isPast;
+        });
+        
+        list.sort((a, b) => {
+            const tA = new Date(a.start_time).getTime();
+            const tB = new Date(b.start_time).getTime();
+            return bookingFilter === 'upcoming' ? tA - tB : tB - tA;
+        });
+        return list;
+    }, [activities.bookings, bookingFilter]);
+
+    const paginatedBookings = useMemo(() => {
+        return filteredBookings.slice(bookingPage * bookingsPerPage, (bookingPage + 1) * bookingsPerPage);
+    }, [filteredBookings, bookingPage]);
+    
+    const totalBookingPages = Math.ceil(filteredBookings.length / bookingsPerPage);
+
     // Single Order Tracking State
     const [trackingOrder, setTrackingOrder] = useState<any>(null);
     const [isTrackingLoading, setIsTrackingLoading] = useState(false);
@@ -116,7 +141,7 @@ export default function DashboardPage() {
         }
 
         if (typeof window !== 'undefined' && window.location.search.includes('success=true')) {
-            clearCart();
+            setTimeout(clearCart, 500);
             setActiveTab('orders');
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -325,11 +350,8 @@ export default function DashboardPage() {
             fetchTrackingOrder(selectedOrderId);
             const interval = setInterval(() => fetchTrackingOrder(selectedOrderId, true), 10000);
             return () => clearInterval(interval);
-        } else if (activeTabRef.current === 'overview') {
-            const interval = setInterval(() => fetchActivities(), 10000);
-            return () => clearInterval(interval);
         }
-    }, [selectedOrderId, fetchTrackingOrder, fetchActivities]);
+    }, [selectedOrderId, fetchTrackingOrder]);
 
     // Initial Load
     useEffect(() => {
@@ -407,6 +429,23 @@ export default function DashboardPage() {
             toast.error(tBookings('cancelError'));
         } finally {
             setCancellingBookingId(null);
+        }
+    };
+
+    const handleDownloadHistoryInvoice = async (orderRef: string, orderId: number) => {
+        try {
+            toast.loading(tTrack('downloadInvoice') || "Generating invoice...");
+            const response = await fetch(`/api/odoo/restaurant/orders/${encodeURIComponent(orderRef)}`);
+            const data = await response.json();
+            toast.dismiss();
+            if (data.order && data.order.line_items) {
+                generateInvoice({ order: data.order });
+            } else {
+                toast.error("Items missing. Cannot generate PDF.");
+            }
+        } catch (e) {
+            toast.dismiss();
+            toast.error("Failed to download invoice.");
         }
     };
 
@@ -705,7 +744,7 @@ export default function DashboardPage() {
                                                             <div className="relative z-10 flex justify-between items-center">
                                                                 <div>
                                                                     <CardTitle className="text-3xl font-display font-bold text-white tracking-tight">{tTrack('realTimeCheck')}</CardTitle>
-                                                                    <CardDescription className="text-white/40 text-lg font-medium">{tTrack('currently', { status: tTrack(trackingStatus) })}</CardDescription>
+                                                                    <CardDescription className="text-white/40 text-lg font-medium">{trackingStatus ? tTrack('currently', { status: tTrack(trackingStatus) }) : ''}</CardDescription>
                                                                 </div>
                                                                 <div className="bg-white/5 p-4 rounded-3xl border border-white/10 backdrop-blur-md">
                                                                     <Clock className="w-8 h-8 text-accent-gold" />
@@ -807,6 +846,15 @@ export default function DashboardPage() {
                                                                 <span>{tTrack('totalPaid')}</span>
                                                                 <span className="text-2xl font-display font-bold text-accent-gold">{formatPrice(trackingOrder.amount_total)}</span>
                                                             </div>
+                                                            {['paid', 'done', 'invoiced'].includes(trackingOrder.state) && (
+                                                                <Button 
+                                                                    variant="outline" 
+                                                                    className="w-full mt-4 rounded-2xl border-white/10 text-white hover:bg-white/5 h-12 font-bold flex items-center justify-center gap-2"
+                                                                    onClick={() => generateInvoice({ order: trackingOrder })}
+                                                                >
+                                                                    <Receipt size={18} /> {tTrack('downloadInvoice') || 'Download Invoice'}
+                                                                </Button>
+                                                            )}
                                                         </div>
                                                     </Card>
                                                 </div>
@@ -836,15 +884,16 @@ export default function DashboardPage() {
                                             ) : orders.length > 0 ? (
                                                 <>
                                                     <div className="hidden md:grid grid-cols-12 gap-4 px-8 py-3 text-[10px] font-black uppercase tracking-[0.2em] text-white/30 bg-white/5 rounded-2xl mb-4 border border-white/5">
-                                                        <div className="col-span-5">Order Reference</div>
-                                                        <div className="col-span-3">Status</div>
+                                                        <div className="col-span-4">Order Reference</div>
+                                                        <div className="col-span-2">Payment</div>
+                                                        <div className="col-span-2">Status</div>
                                                         <div className="col-span-2 text-right">Amount</div>
                                                         <div className="col-span-2 text-right">Action</div>
                                                     </div>
 
                                                     {orders.map((order) => (
                                                         <div key={order.id} className="group grid grid-cols-1 md:grid-cols-12 items-center gap-4 p-6 rounded-[2.5rem] bg-white/5 border border-white/5 hover:border-accent-gold/30 hover:bg-white/10 transition-all duration-300 shadow-xl">
-                                                            <div className="col-span-5 flex items-center gap-5">
+                                                            <div className="col-span-4 flex items-center gap-5">
                                                                 <div className="w-14 h-14 rounded-2xl bg-neutral-950 border border-white/5 flex items-center justify-center text-accent-gold font-bold transition-all group-hover:scale-110 shadow-lg group-hover:shadow-accent-gold/5">
                                                                     <ShoppingBag size={22} />
                                                                 </div>
@@ -859,9 +908,15 @@ export default function DashboardPage() {
                                                                 </div>
                                                             </div>
 
-                                                            <div className="col-span-3">
-                                                                <Badge className={`text-[9px] uppercase font-black tracking-widest border-none px-4 py-1.5 rounded-full ${['paid', 'done', 'invoiced'].includes(order.state) ? 'bg-green-500/10 text-green-400 shadow-lg shadow-green-500/5' : 'bg-orange-500/10 text-orange-400 shadow-lg shadow-orange-500/5'}`}>
+                                                            <div className="col-span-2">
+                                                                <Badge className={`text-[9px] uppercase font-black tracking-widest border-none px-4 py-1.5 rounded-full ${['paid', 'done', 'invoiced'].includes(order.state) ? 'bg-green-500/10 text-green-400' : 'bg-orange-500/10 text-orange-400'}`}>
                                                                     {order.state}
+                                                                </Badge>
+                                                            </div>
+
+                                                            <div className="col-span-2">
+                                                                <Badge className={`text-[9px] uppercase font-black tracking-widest border-none px-4 py-1.5 rounded-full ${order.delivery_status === 'delivering' || order.delivery_status === 'delivered' ? 'bg-blue-500/10 text-blue-400' : 'bg-white/5 text-white/30'}`}>
+                                                                    {tTrack(order.delivery_status || 'wait') || order.delivery_status || 'Wait'}
                                                                 </Badge>
                                                             </div>
 
@@ -871,7 +926,7 @@ export default function DashboardPage() {
 
                                                             <div className="col-span-2 flex items-center justify-end gap-3">
                                                                 {['paid', 'done', 'invoiced'].includes(order.state) && (
-                                                                    <button onClick={() => generateInvoice({ order })} className="p-3 rounded-xl bg-white/5 border border-white/10 text-white/40 hover:text-accent-gold hover:border-accent-gold/50 transition-all shadow-xl">
+                                                                    <button onClick={() => handleDownloadHistoryInvoice(order.pos_reference || order.name, order.id)} className="p-3 rounded-xl bg-white/5 border border-white/10 text-white/40 hover:text-accent-gold hover:border-accent-gold/50 transition-all shadow-xl">
                                                                         <Receipt size={18} />
                                                                     </button>
                                                                 )}
@@ -927,63 +982,90 @@ export default function DashboardPage() {
 
                             <TabsContent value="bookings" className="mt-0 animate-in fade-in slide-in-from-bottom-4 duration-500">
                                 <Card className="rounded-[2.5rem] border-white/5 shadow-2xl bg-neutral-900/50 backdrop-blur-xl p-6 md:p-10">
-                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-8 mb-12">
+                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
                                         <div className="space-y-1">
                                             <h3 className="text-3xl font-display font-bold text-white tracking-tight">{tBookings('bookings')}</h3>
                                             <p className="text-sm text-white/40 font-medium">{tBookings('subtitle')}</p>
                                         </div>
-                                        <Button className="rounded-2xl h-14 bg-accent-gold hover:bg-accent-gold/90 text-primary font-black uppercase tracking-widest px-10 shadow-2xl shadow-accent-gold/20 flex items-center gap-3 transition-all" onClick={() => router.push('/booking')}>
-                                            <Calendar size={20} /> {tBookings('bookNow')}
-                                        </Button>
+                                        <div className="flex flex-wrap items-center gap-3 lg:gap-4">
+                                            <div className="flex bg-white/5 p-1 rounded-2xl border border-white/10 shrink-0">
+                                                <button onClick={() => { setBookingFilter('upcoming'); setBookingPage(0); }} className={`px-5 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all ${bookingFilter === 'upcoming' ? 'bg-accent-gold text-primary shadow-lg' : 'text-white/40 hover:text-white hover:bg-white/5'}`}>Upcoming</button>
+                                                <button onClick={() => { setBookingFilter('previous'); setBookingPage(0); }} className={`px-5 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all ${bookingFilter === 'previous' ? 'bg-accent-gold text-primary shadow-lg' : 'text-white/40 hover:text-white hover:bg-white/5'}`}>Previous</button>
+                                            </div>
+                                            <Button variant="outline" className="rounded-2xl border-white/10 text-white font-bold hover:bg-white/5 h-12 md:h-14 px-4 md:px-6 transition-all" onClick={() => fetchActivities()}>
+                                                <RefreshCw size={18} className={isLoadingActivities ? "animate-spin mr-2" : "mr-2"} /> <span className="hidden md:inline">{tProfile('refresh')}</span>
+                                            </Button>
+                                            <Button className="rounded-2xl h-12 md:h-14 bg-accent-gold hover:bg-accent-gold/90 text-primary font-black uppercase tracking-widest px-6 md:px-10 shadow-2xl shadow-accent-gold/20 flex items-center gap-2 transition-all" onClick={() => router.push('/booking')}>
+                                                <Calendar size={18} /> <span className="hidden md:inline">{tBookings('bookNow')}</span><span className="md:hidden">Book</span>
+                                            </Button>
+                                        </div>
                                     </div>
 
                                     <div className="space-y-6">
                                         {isLoadingActivities ? (
-                                            [1, 2].map(i => <Skeleton key={i} className="h-40 w-full rounded-3xl" />)
-                                        ) : activities.bookings.length > 0 ? (
-                                            activities.bookings.map((booking) => (
-                                                <Card key={booking.id} className="relative bg-white/5 border border-white/5 hover:border-accent-gold/30 hover:bg-white/10 transition-all duration-500 group rounded-[2.5rem] overflow-hidden shadow-2xl">
-                                                    <div className="absolute top-0 right-0 p-8">
-                                                        <Badge className={`px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border-none ${booking.status === 'confirmed' ? 'bg-green-500/10 text-green-400 shadow-lg shadow-green-500/10' :
-                                                            booking.status === 'cancelled' ? 'bg-red-500/10 text-red-400 shadow-lg shadow-red-500/10' :
+                                            [1, 2].map(i => <Skeleton key={i} className="h-24 w-full rounded-2xl" />)
+                                        ) : filteredBookings.length > 0 ? (
+                                            <>
+                                            {paginatedBookings.map((booking) => {
+                                                const bookingStart = new Date(booking.start_time);
+                                                const isPast = bookingStart < new Date();
+                                                const displayStatus = (booking.status === 'confirmed' && isPast) ? 'no_show' : booking.status;
+                                                const canCancel = booking.cancel_token && displayStatus !== 'cancelled' && displayStatus !== 'no_show';
+                                                
+                                                return (
+                                                <Card key={booking.id} className="relative bg-white/5 border border-white/5 hover:border-accent-gold/30 hover:bg-white/10 transition-all duration-300 group rounded-3xl overflow-hidden shadow-xl">
+                                                    <div className="absolute top-0 right-0 p-4">
+                                                        <Badge className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border-none ${displayStatus === 'confirmed' ? 'bg-green-500/10 text-green-400' :
+                                                            displayStatus === 'cancelled' || displayStatus === 'no_show' ? 'bg-red-500/10 text-red-400' :
                                                                 'bg-white/5 text-white/40'
                                                             }`}>
-                                                            {tBookings(booking.status) || booking.status}
+                                                            {tBookings(displayStatus) || displayStatus.replace('_', ' ')}
                                                         </Badge>
                                                     </div>
-                                                    <CardHeader className="pb-2 p-10">
-                                                        <span className="text-[10px] font-black tracking-[0.3em] text-accent-gold uppercase mb-2">#{booking.name}</span>
-                                                        <CardTitle className="text-2xl font-display font-bold text-white group-hover:text-accent-gold transition-colors tracking-tight">{booking.config_name}</CardTitle>
+                                                    <CardHeader className="pb-0 p-4">
+                                                        <span className="text-[9px] font-black tracking-[0.3em] text-accent-gold uppercase mb-1">#{booking.name}</span>
+                                                        <CardTitle className="text-lg font-display font-bold text-white group-hover:text-accent-gold transition-colors tracking-tight">{booking.config_name}</CardTitle>
                                                     </CardHeader>
-                                                    <CardContent className="p-10 pt-2">
-                                                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-8 mb-10">
+                                                    <CardContent className="p-4 pt-3 flex flex-col md:flex-row md:items-end justify-between gap-4">
+                                                        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
                                                             {[
                                                                 { label: tBookings('date'), val: new Date(booking.start_time).toLocaleDateString(), icon: Calendar },
                                                                 { label: tBookings('time'), val: new Date(booking.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), icon: Clock },
                                                                 { label: tBookings('guests'), val: `${booking.party_size} ${tBookings('people')}`, icon: User },
                                                                 { label: tBookings('tables'), val: booking.tables.join(', '), icon: Utensils },
                                                             ].map((info, i) => (
-                                                                <div key={i} className="space-y-2">
-                                                                    <p className="text-[10px] text-white/20 uppercase font-black tracking-widest">{info.label}</p>
-                                                                    <div className="flex items-center gap-3 text-white font-bold bg-white/5 p-3 rounded-2xl border border-white/5 group-hover:border-white/10 transition-all">
-                                                                        <info.icon className="w-4 h-4 text-accent-gold" />
-                                                                        <span className="text-sm tracking-tight">{info.val}</span>
-                                                                    </div>
+                                                                <div key={i} className="flex items-center gap-1.5 opacity-80">
+                                                                    <info.icon className="w-3.5 h-3.5 text-accent-gold shrink-0" />
+                                                                    <span className="text-[11px] font-medium text-white/60 uppercase tracking-wider">{info.label}: <span className="text-white font-bold tracking-normal ml-0.5">{info.val}</span></span>
                                                                 </div>
                                                             ))}
                                                         </div>
 
-                                                        {booking.cancel_token && booking.status !== 'cancelled' && (
-                                                            <div className="flex justify-end pt-8 border-t border-white/5">
-                                                                <Button variant="ghost" className="text-white/40 hover:text-red-400 hover:bg-red-400/10 font-black uppercase tracking-widest text-[10px] rounded-2xl h-12 px-6 transition-all" onClick={() => handleCancelBooking(booking.cancel_token, booking.id)} disabled={cancellingBookingId === booking.id}>
-                                                                    {cancellingBookingId === booking.id ? <Loader2 className="w-4 h-4 animate-spin mr-3" /> : <XCircle className="w-4 h-4 mr-3" />}
-                                                                    {tBookings('cancelBooking')}
-                                                                </Button>
-                                                            </div>
+                                                        {canCancel && (
+                                                            <Button variant="ghost" className="text-white/40 hover:text-red-400 hover:bg-red-400/10 font-black uppercase tracking-widest text-[9px] rounded-lg h-8 px-4 transition-all shrink-0 w-full md:w-auto mt-2 md:mt-0" onClick={() => handleCancelBooking(booking.cancel_token, booking.id)} disabled={cancellingBookingId === booking.id}>
+                                                                {cancellingBookingId === booking.id ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> : <XCircle className="w-3.5 h-3.5 mr-2" />}
+                                                                {tBookings('cancelBooking')}
+                                                            </Button>
                                                         )}
                                                     </CardContent>
                                                 </Card>
-                                            ))
+                                            )})}
+                                            
+                                            {/* Pagination */}
+                                            {totalBookingPages > 1 && (
+                                                <div className="flex justify-center items-center gap-2 pt-6">
+                                                    <Button variant="ghost" className="w-10 h-10 p-0 rounded-full bg-white/5 hover:bg-white/10 text-white disabled:opacity-30 disabled:hover:bg-white/5" onClick={() => setBookingPage(p => Math.max(0, p - 1))} disabled={bookingPage === 0}>
+                                                        <ChevronLeft size={18} />
+                                                    </Button>
+                                                    <div className="text-xs font-bold text-white/60 tracking-widest">
+                                                        {bookingPage + 1} / {totalBookingPages}
+                                                    </div>
+                                                    <Button variant="ghost" className="w-10 h-10 p-0 rounded-full bg-white/5 hover:bg-white/10 text-white disabled:opacity-30 disabled:hover:bg-white/5" onClick={() => setBookingPage(p => Math.min(totalBookingPages - 1, p + 1))} disabled={bookingPage >= totalBookingPages - 1}>
+                                                        <ChevronRight size={18} />
+                                                    </Button>
+                                                </div>
+                                            )}
+                                            </>
                                         ) : (
                                             <div className="flex flex-col items-center justify-center py-24 text-center space-y-6 rounded-[3rem] bg-white/5 border-2 border-dashed border-white/10">
                                                 <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center text-white/20 border border-white/5">

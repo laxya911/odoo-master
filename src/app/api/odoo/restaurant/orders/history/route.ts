@@ -49,10 +49,9 @@ export async function GET(request: NextRequest) {
 
     const resolvedPartnerId = partners[0].id
 
-    // 2. Fetch Orders
     const orders = await odooCall<PosOrder[]>('pos.order', 'search_read', {
       domain: [['partner_id', '=', resolvedPartnerId]],
-      fields: ['id', 'name', 'date_order', 'amount_total', 'state'],
+      fields: ['id', 'name', 'date_order', 'amount_total', 'state', 'delivery_status', 'pos_reference'],
       limit,
       offset,
       order: 'date_order desc',
