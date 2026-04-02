@@ -503,7 +503,6 @@
         "initPayment": "Initializing payment..."
     },
     "myBookings": {
-        "no_show": "No Show",
         "title": "My Activities",
         "subtitle": "Manage your reservations and orders",
         "bookings": "Table Bookings",
@@ -525,7 +524,9 @@
         "cancelled": "Cancelled",
         "completed": "Completed",
         "checkIn": "Checked In",
+        "checked_in": "Checked In",
         "noShow": "No Show",
+        "no_show": "No Show",
         "viewOrder": "View Order",
         "loginRequired": "Please login to view your activities",
         "fetching": "Loading your activities...",

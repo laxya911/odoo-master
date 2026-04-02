@@ -125,11 +125,8 @@ export default function DashboardPage() {
     const [postPaymentStatus, setPostPaymentStatus] = useState<'idle' | 'syncing' | 'found' | 'error'>('idle');
 
     // Handle URL params for direct tab access (run once on mount)
-    const hasInitialized = useRef(false);
+    const hasClearedCart = useRef(false);
     useEffect(() => {
-        if (hasInitialized.current) return;
-        hasInitialized.current = true;
-
         const tab = searchParams.get('tab');
         if (tab && ['overview', 'orders', 'bookings', 'profile'].includes(tab)) {
             setActiveTab(tab);
@@ -140,12 +137,12 @@ export default function DashboardPage() {
             setActiveTab('orders');
         }
 
-        if (typeof window !== 'undefined' && window.location.search.includes('success=true')) {
-            setTimeout(clearCart, 500);
+        if (typeof window !== 'undefined' && window.location.search.includes('success=true') && !hasClearedCart.current) {
+            hasClearedCart.current = true;
+            clearCart();
             setActiveTab('orders');
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [searchParams, clearCart]);
 
     // Post-payment order creation: poll /api/track/latest to trigger recovery fulfillment
     const hasStartedPolling = useRef(false);
